@@ -1,0 +1,9 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://127.0.0.1:5433/iam
+
+iam:
+  issuer: http://localhost:8082
+
+server:
+  port: 8082

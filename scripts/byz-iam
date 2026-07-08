@@ -1,0 +1,89 @@
+#!/bin/bash
+set -euo pipefail
+
+DB_NAME="${IAM_DB_NAME:-iam}"
+PSQL="sudo -u postgres psql -d ${DB_NAME} -v ON_ERROR_STOP=1"
+
+slugify() {
+  echo "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g' | sed -E 's/^-+|-+$//g'
+}
+
+rand_secret() {
+  openssl rand -base64 32 | tr -d '/+=' | cut -c1-40
+}
+
+bcrypt_hash() {
+  htpasswd -nbBC 10 "" "$1" | cut -d: -f2 | sed "s/'/''/g"
+}
+
+cmd="${1:-}"
+shift || true
+
+case "$cmd" in
+  org-create)
+    name="${1:?Usage: byz-iam org-create \"Organization Name\"}"
+    slug="${2:-$(slugify "$name")}"
+    $PSQL -c "INSERT INTO iam.organizations (name, slug) VALUES ('${name//\'/''}', '${slug}') RETURNING id, slug;"
+    ;;
+
+  tenant-create)
+    org_slug="${1:?Usage: byz-iam tenant-create <org-slug> \"Tenant Name\"}"
+    name="${2:?Usage: byz-iam tenant-create <org-slug> \"Tenant Name\"}"
+    tenant_slug="${3:-$(slugify "$name")}"
+    $PSQL -c "
+      INSERT INTO iam.tenants (organization_id, name, slug)
+      SELECT o.id, '${name//\'/''}', '${tenant_slug}'
+      FROM iam.organizations o WHERE o.slug='${org_slug}' AND o.active
+      RETURNING id, slug;"
+    ;;
+
+  client-create)
+    org_slug="${1:?Usage: byz-iam client-create <org-slug> <client-id> <name> [public|confidential]}"
+    client_id="${2:?client-id required}"
+    name="${3:?name required}"
+    type="${4:-public}"
+    secret=""
+    secret_sql="NULL"
+    grants="password,refresh_token"
+    client_type="PUBLIC"
+    if [[ "$type" == "confidential" ]]; then
+      secret="$(rand_secret)"
+      secret_sql="'$(bcrypt_hash "$secret")'"
+      grants="password,refresh_token,client_credentials"
+      client_type="CONFIDENTIAL"
+    fi
+    $PSQL -c "
+      INSERT INTO iam.clients (client_id, organization_id, client_secret_hash, client_type, grant_types, name)
+      SELECT '${client_id}', o.id, ${secret_sql}, '${client_type}', '${grants}', '${name//\'/''}'
+      FROM iam.organizations o WHERE o.slug='${org_slug}' AND o.active
+      RETURNING client_id, client_type;"
+    if [[ -n "$secret" ]]; then
+      echo "client_secret (save now): ${secret}"
+    fi
+    ;;
+
+  list)
+    $PSQL -c "SELECT slug, name, active FROM iam.organizations ORDER BY created_at;"
+    $PSQL -c "SELECT o.slug AS org, t.slug, t.name, t.id FROM iam.tenants t JOIN iam.organizations o ON o.id=t.organization_id ORDER BY t.created_at;"
+    $PSQL -c "SELECT o.slug AS org, c.client_id, c.client_type, c.name FROM iam.clients c JOIN iam.organizations o ON o.id=c.organization_id ORDER BY c.created_at;"
+    ;;
+
+  token-report)
+    $PSQL -c "
+      SELECT o.slug AS organization, te.event_type, COUNT(*) AS total
+      FROM iam.token_events te
+      JOIN iam.organizations o ON o.id = te.organization_id
+      GROUP BY o.slug, te.event_type
+      ORDER BY o.slug, te.event_type;"
+    ;;
+
+  *)
+    echo "Usage:"
+    echo "  byz-iam org-create \"BuilderBuddy\" [slug]"
+    echo "  byz-iam tenant-create <org-slug> \"Default Tenant\" [slug]"
+    echo "  byz-iam client-create <org-slug> <client-id> <name> [public|confidential]"
+    echo "  byz-iam list"
+    echo "  byz-iam token-report"
+    exit 1
+    ;;
+esac

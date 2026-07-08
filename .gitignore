@@ -1,0 +1,25 @@
+target/
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+.DS_Store
+*.log
+
+# JWT / crypto keys — never commit
+keys/
+*.pem
+*.key
+*.p12
+*.jks
+
+# Env files with secrets
+.env
+.env.*
+!.env.example
+
+# Local secret overrides
+application-secrets.yml
+application-secrets.properties
+secrets/
