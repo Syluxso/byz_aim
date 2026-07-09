@@ -56,6 +56,14 @@ public class JwtService {
                 .compact();
     }
 
+    public io.jsonwebtoken.Claims validateToken(String token) {
+        return Jwts.parser()
+                .verifyWith((java.security.interfaces.RSAPublicKey) keyProvider.keyPair().getPublic())
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+    }
+
     public long accessTokenTtlSeconds() {
         return accessTokenTtlSeconds;
     }
