@@ -24,10 +24,10 @@ public class SecurityConfig {
     @Value("${CORS_ORIGINS:http://localhost:4200,http://localhost:4201}")
     private String corsOrigins;
 
-    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final JwtService jwtService;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
-        this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+    public SecurityConfig(JwtService jwtService) {
+        this.jwtService = jwtService;
     }
 
     @Bean
@@ -42,7 +42,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/register", "/api/v1/login",
                                 "/api/v1/oauth/token", "/api/v1/oauth/refresh").permitAll()
                         .anyRequest().authenticated())
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(new JwtAuthenticationFilter(jwtService), UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 
