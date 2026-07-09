@@ -36,5 +36,7 @@ management:
       show-details: always
 
 logging:
+  level:
+    com.nyberg.iam.config.JwtAuthenticationFilter: WARN
   pattern:
     console: '{"time":"%d{yyyy-MM-dd HH:mm:ss.SSS}","level":"%level","service":"byz-iam","logger":"%logger{36}","msg":"%msg"}%n'
