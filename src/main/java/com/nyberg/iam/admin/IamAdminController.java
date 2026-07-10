@@ -17,6 +17,11 @@ public class IamAdminController {
 
     // ── Orgs ──────────────────────────────────────────────────────────────────
 
+    @GetMapping("/ping")
+    public java.util.Map<String, String> ping() {
+        return java.util.Map.of("status", "ok", "service", "iam-admin");
+    }
+
     @GetMapping("/orgs")
     public List<OrgResponse> listOrgs() {
         return service.listOrgs();

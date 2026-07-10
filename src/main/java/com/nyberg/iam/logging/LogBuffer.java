@@ -32,28 +32,41 @@ public class LogBuffer extends AppenderBase<ILoggingEvent> {
 
     @Override
     protected void append(ILoggingEvent event) {
-        if (entries.size() >= MAX_ENTRIES) {
-            entries.pollFirst();
+        try {
+            if (entries.size() >= MAX_ENTRIES) {
+                entries.pollFirst();
+            }
+            IThrowableProxy tp = event.getThrowableProxy();
+            String exception = null;
+            if (tp != null) {
+                String msg = tp.getMessage();
+                exception = tp.getClassName() + (msg != null ? ": " + msg : "");
+            }
+            String message = event.getFormattedMessage();
+            if (message != null && message.length() > 4000) {
+                message = message.substring(0, 4000) + "…";
+            }
+            entries.addLast(new LogEntry(
+                    Instant.ofEpochMilli(event.getTimeStamp()).toString(),
+                    event.getLevel() != null ? event.getLevel().toString() : "INFO",
+                    event.getLoggerName(),
+                    message,
+                    exception
+            ));
+        } catch (Throwable ignored) {
+            // Swallow — logging must never break request handling.
         }
-        IThrowableProxy tp = event.getThrowableProxy();
-        String exception = tp != null ? tp.getClassName() + ": " + tp.getMessage() : null;
-        entries.addLast(new LogEntry(
-                Instant.ofEpochMilli(event.getTimeStamp()),
-                event.getLevel().toString(),
-                event.getLoggerName(),
-                event.getFormattedMessage(),
-                exception
-        ));
     }
 
     public List<LogEntry> tail(int lines, String level) {
         List<LogEntry> all = new ArrayList<>(entries);
         List<LogEntry> filtered = (level == null || level.isBlank())
                 ? all
-                : all.stream().filter(e -> e.level().equalsIgnoreCase(level)).toList();
+                : all.stream().filter(e -> e.level() != null && e.level().equalsIgnoreCase(level)).toList();
         int from = Math.max(0, filtered.size() - lines);
-        return filtered.subList(from, filtered.size());
+        // copyOf so Jackson never serializes a subList view
+        return List.copyOf(filtered.subList(from, filtered.size()));
     }
 
-    public record LogEntry(Instant ts, String level, String logger, String message, String exception) {}
+    public record LogEntry(String ts, String level, String logger, String message, String exception) {}
 }
