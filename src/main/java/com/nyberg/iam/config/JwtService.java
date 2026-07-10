@@ -41,9 +41,9 @@ public class JwtService {
                 .compact();
     }
 
-    public String createServiceToken(String clientId, UUID organizationId, String audience) {
+    public String createServiceToken(String clientId, UUID organizationId, UUID tenantId, String audience) {
         Instant now = Instant.now();
-        return Jwts.builder()
+        var builder = Jwts.builder()
                 .header().keyId(keyProvider.keyId()).and()
                 .issuer(issuer)
                 .subject(clientId)
@@ -51,9 +51,11 @@ public class JwtService {
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plusSeconds(accessTokenTtlSeconds)))
                 .claim("organization_id", organizationId.toString())
-                .claim("grant_type", "client_credentials")
-                .signWith(keyProvider.keyPair().getPrivate())
-                .compact();
+                .claim("grant_type", "client_credentials");
+        if (tenantId != null) {
+            builder.claim("tenant_id", tenantId.toString());
+        }
+        return builder.signWith(keyProvider.keyPair().getPrivate()).compact();
     }
 
     public long accessTokenTtlSeconds() {

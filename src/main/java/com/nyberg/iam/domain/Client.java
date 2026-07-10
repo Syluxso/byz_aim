@@ -25,6 +25,9 @@ public class Client {
     @Column(name = "organization_id", nullable = false)
     private UUID organizationId;
 
+    @Column(name = "tenant_id")
+    private UUID tenantId;
+
     @Column(name = "client_secret_hash")
     private String clientSecretHash;
 

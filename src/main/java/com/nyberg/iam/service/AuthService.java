@@ -119,7 +119,7 @@ public class AuthService {
         }
 
         logEvent(TokenEventType.CLIENT_CREDENTIALS, client.getOrganizationId(), null, client.getId());
-        String accessToken = jwtService.createServiceToken(client.getClientId(), client.getOrganizationId(), "byz-api");
+        String accessToken = jwtService.createServiceToken(client.getClientId(), client.getOrganizationId(), client.getTenantId(), "byz-api");
         return TokenResponse.accessOnly(accessToken, jwtService.accessTokenTtlSeconds());
     }
 
