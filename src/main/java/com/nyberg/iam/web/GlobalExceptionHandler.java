@@ -31,9 +31,10 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(DataAccessException.class)
     public ProblemDetail handleDataAccess(DataAccessException ex, HttpServletRequest request) {
         safeLog(request, ex);
+        String root = ex.getMostSpecificCause() != null ? ex.getMostSpecificCause().getMessage() : ex.getMessage();
         ProblemDetail detail = ProblemDetail.forStatusAndDetail(
                 HttpStatus.INTERNAL_SERVER_ERROR,
-                "Database error while handling " + request.getRequestURI());
+                "Database error: " + root);
         detail.setTitle("Internal Server Error");
         return detail;
     }
@@ -41,7 +42,9 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ProblemDetail handleAll(Exception ex, HttpServletRequest request) {
         safeLog(request, ex);
-        ProblemDetail detail = ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error");
+        ProblemDetail detail = ProblemDetail.forStatusAndDetail(
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                ex.getClass().getSimpleName() + ": " + (ex.getMessage() != null ? ex.getMessage() : "unexpected error"));
         detail.setTitle("Internal Server Error");
         return detail;
     }
