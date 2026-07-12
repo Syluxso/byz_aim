@@ -4,5 +4,6 @@ public enum TokenEventType {
     LOGIN,
     REGISTER,
     REFRESH,
-    CLIENT_CREDENTIALS
+    CLIENT_CREDENTIALS,
+    SUBJECT
 }

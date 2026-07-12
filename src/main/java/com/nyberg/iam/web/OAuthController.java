@@ -17,7 +17,7 @@ public class OAuthController {
 
     @PostMapping("/token")
     public TokenResponse token(@Valid @RequestBody TokenRequest request) {
-        return authService.clientCredentials(request);
+        return authService.token(request);
     }
 
     @PostMapping("/refresh")

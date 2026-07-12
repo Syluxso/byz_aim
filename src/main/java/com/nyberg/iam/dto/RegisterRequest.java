@@ -9,7 +9,7 @@ import java.util.UUID;
 public record RegisterRequest(
         @NotBlank @Email String email,
         @NotBlank String password,
-        @NotBlank String name,
+        String name, // optional — defaults to email local-part when blank
         @NotBlank String clientId,
         @NotNull UUID tenantId
 ) {}

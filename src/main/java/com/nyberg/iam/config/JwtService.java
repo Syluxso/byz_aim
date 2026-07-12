@@ -20,6 +20,9 @@ public class JwtService {
     @Value("${iam.access-token-ttl-seconds}")
     private long accessTokenTtlSeconds;
 
+    @Value("${iam.subject-token-ttl-seconds:900}")
+    private long subjectTokenTtlSeconds;
+
     public JwtService(JwtKeyProvider keyProvider) {
         this.keyProvider = keyProvider;
     }
@@ -58,8 +61,31 @@ public class JwtService {
         return builder.signWith(keyProvider.keyPair().getPrivate()).compact();
     }
 
+    /** Short-lived token for an external recipient — no IAM user row required. */
+    public String createSubjectToken(UUID subject, UUID organizationId, UUID tenantId, String clientId, String audience) {
+        Instant now = Instant.now();
+        var builder = Jwts.builder()
+                .header().keyId(keyProvider.keyId()).and()
+                .issuer(issuer)
+                .subject(subject.toString())
+                .audience().add(audience).and()
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(now.plusSeconds(subjectTokenTtlSeconds)))
+                .claim("organization_id", organizationId.toString())
+                .claim("client_id", clientId)
+                .claim("grant_type", "subject");
+        if (tenantId != null) {
+            builder.claim("tenant_id", tenantId.toString());
+        }
+        return builder.signWith(keyProvider.keyPair().getPrivate()).compact();
+    }
+
     public long accessTokenTtlSeconds() {
         return accessTokenTtlSeconds;
+    }
+
+    public long subjectTokenTtlSeconds() {
+        return subjectTokenTtlSeconds;
     }
 
     public Map<String, Object> jwk() {

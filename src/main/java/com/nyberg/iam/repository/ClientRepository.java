@@ -8,4 +8,6 @@ import java.util.UUID;
 
 public interface ClientRepository extends JpaRepository<Client, UUID> {
     Optional<Client> findByClientIdAndActiveTrue(String clientId);
+
+    boolean existsByClientId(String clientId);
 }

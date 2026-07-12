@@ -23,6 +23,7 @@ server:
 iam:
   issuer: ${IAM_ISSUER:https://iam.byzantineapp.dev}
   access-token-ttl-seconds: ${ACCESS_TOKEN_TTL:3600}
+  subject-token-ttl-seconds: ${SUBJECT_TOKEN_TTL:900}
   refresh-token-ttl-seconds: ${REFRESH_TOKEN_TTL:2592000}
   key-dir: ${IAM_KEY_DIR:./keys}
 

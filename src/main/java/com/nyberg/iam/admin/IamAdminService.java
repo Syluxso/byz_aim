@@ -93,14 +93,28 @@ public class IamAdminService {
     @Transactional
     public ClientCreatedResponse createClient(UUID orgId, CreateClientRequest req) {
         requireOrg(orgId);
+        String clientId = req.clientId().trim();
+        if (clientId.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "clientId is required");
+        }
+        if (clientRepo.existsByClientId(clientId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Client ID '" + clientId + "' already exists (must be globally unique)");
+        }
+        if (req.tenantId() != null) {
+            tenantRepo.findByIdAndOrganizationIdAndActiveTrue(req.tenantId(), orgId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "tenantId does not belong to this organization (or is inactive)"));
+        }
+
         boolean confidential = !"public".equalsIgnoreCase(req.type());
         String secret = confidential ? generateSecret() : null;
 
         Client client = new Client();
-        client.setClientId(req.clientId());
+        client.setClientId(clientId);
         client.setOrganizationId(orgId);
         client.setTenantId(req.tenantId());
-        client.setName(req.name());
+        client.setName(req.name().trim());
         client.setClientType(confidential ? ClientType.CONFIDENTIAL : ClientType.PUBLIC);
         client.setGrantTypes(confidential
                 ? "password,refresh_token,client_credentials"

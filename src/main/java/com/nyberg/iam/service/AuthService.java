@@ -49,12 +49,16 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already registered for this organization");
         }
 
+        String name = (req.name() != null && !req.name().isBlank())
+                ? req.name().trim()
+                : defaultNameFromEmail(email);
+
         User user = User.builder()
                 .organizationId(client.getOrganizationId())
                 .tenantId(tenant.getId())
                 .email(email)
                 .passwordHash(passwordEncoder.encode(req.password()))
-                .name(req.name().trim())
+                .name(name)
                 .active(true)
                 .build();
         userRepository.save(user);
@@ -101,26 +105,67 @@ public class AuthService {
     }
 
     @Transactional
-    public TokenResponse clientCredentials(TokenRequest req) {
-        if (!"client_credentials".equals(req.grantType())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported grant_type");
+    public TokenResponse token(TokenRequest req) {
+        String grant = req.grantType().trim();
+        if ("client_credentials".equals(grant)) {
+            return clientCredentials(req);
         }
+        if ("subject".equals(grant) || "urn:byz:params:oauth:grant-type:subject".equals(grant)) {
+            return subjectToken(req);
+        }
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported grant_type");
+    }
 
-        Client client = resolveClient(req.clientId());
-        if (client.getClientType() != ClientType.CONFIDENTIAL) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Client not allowed for client_credentials");
-        }
+    @Transactional
+    public TokenResponse clientCredentials(TokenRequest req) {
+        Client client = authenticateConfidentialClient(req);
         if (!client.supportsGrant("client_credentials")) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Grant type not allowed for client");
+        }
+
+        logEvent(TokenEventType.CLIENT_CREDENTIALS, client.getOrganizationId(), null, client.getId());
+        String accessToken = jwtService.createServiceToken(
+                client.getClientId(), client.getOrganizationId(), client.getTenantId(), "byz-api");
+        return TokenResponse.accessOnly(accessToken, jwtService.accessTokenTtlSeconds());
+    }
+
+    /**
+     * Mint a short-lived JWT whose {@code sub} is an external recipient UUID.
+     * No IAM user row is created or required. Confidential client only.
+     */
+    @Transactional
+    public TokenResponse subjectToken(TokenRequest req) {
+        if (req.subject() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "subject (UUID) is required for subject grant");
+        }
+        Client client = authenticateConfidentialClient(req);
+
+        logEvent(TokenEventType.SUBJECT, client.getOrganizationId(), null, client.getId());
+        String accessToken = jwtService.createSubjectToken(
+                req.subject(),
+                client.getOrganizationId(),
+                client.getTenantId(),
+                client.getClientId(),
+                "byz-api");
+        return TokenResponse.accessOnly(accessToken, jwtService.subjectTokenTtlSeconds());
+    }
+
+    private Client authenticateConfidentialClient(TokenRequest req) {
+        Client client = resolveClient(req.clientId());
+        if (client.getClientType() != ClientType.CONFIDENTIAL) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Client not allowed for this grant");
         }
         if (client.getClientSecretHash() == null || req.clientSecret() == null
                 || !passwordEncoder.matches(req.clientSecret(), client.getClientSecretHash())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid client credentials");
         }
+        return client;
+    }
 
-        logEvent(TokenEventType.CLIENT_CREDENTIALS, client.getOrganizationId(), null, client.getId());
-        String accessToken = jwtService.createServiceToken(client.getClientId(), client.getOrganizationId(), client.getTenantId(), "byz-api");
-        return TokenResponse.accessOnly(accessToken, jwtService.accessTokenTtlSeconds());
+    private static String defaultNameFromEmail(String email) {
+        int at = email.indexOf('@');
+        String local = at > 0 ? email.substring(0, at) : email;
+        return local.isBlank() ? "User" : local;
     }
 
     private TokenResponse issueUserTokens(User user, Client client) {
