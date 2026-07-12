@@ -24,7 +24,7 @@ import java.util.List;
 @EnableWebSecurity
 public class SecurityConfig {
 
-    @Value("${CORS_ORIGINS:http://localhost:4200,http://localhost:4201}")
+    @Value("${CORS_ORIGINS:http://localhost:4200,http://localhost:4201,http://localhost:4202}")
     private String corsOrigins;
 
     @Bean
