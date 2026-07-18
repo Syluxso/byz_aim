@@ -24,7 +24,7 @@ import java.util.List;
 @EnableWebSecurity
 public class SecurityConfig {
 
-    @Value("${CORS_ORIGINS:http://localhost:4200,http://localhost:4201,http://localhost:4202,http://localhost:4203}")
+    @Value("${CORS_ORIGINS:http://localhost:4200,http://localhost:4201,http://localhost:4202,http://localhost:4203,http://localhost:8100,http://localhost:8101,http://localhost:8102,http://127.0.0.1:4200,http://127.0.0.1:4201,http://127.0.0.1:4202,http://127.0.0.1:4203,http://127.0.0.1:8100,http://127.0.0.1:8101,http://127.0.0.1:8102}")
     private String corsOrigins;
 
     @Bean
@@ -37,7 +37,7 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                         .requestMatchers("/.well-known/jwks.json").permitAll()
                         .requestMatchers("/api/v1/build-info").permitAll()
-                        .requestMatchers("/api/v1/register", "/api/v1/login",
+                        .requestMatchers("/api/v1/register", "/api/v1/signup", "/api/v1/login",
                                 "/api/v1/oauth/token", "/api/v1/oauth/refresh").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(e -> e

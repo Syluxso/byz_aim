@@ -1,8 +1,11 @@
 package com.nyberg.iam.admin;
 
 import com.nyberg.iam.domain.*;
+import com.nyberg.iam.events.UserLifecycleEvent;
+import com.nyberg.iam.events.UserRegisteredApplicationEvent;
 import com.nyberg.iam.repository.*;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -18,10 +21,15 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class IamAdminService {
 
+    private static final String PLATFORM_CLIENT_ID = "byz-admin";
+
     private final OrganizationRepository orgRepo;
     private final TenantRepository tenantRepo;
     private final ClientRepository clientRepo;
+    private final UserRepository userRepo;
+    private final RefreshTokenRepository refreshTokenRepo;
     private final PasswordEncoder passwordEncoder;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     // ── Orgs ──────────────────────────────────────────────────────────────────
 
@@ -147,7 +155,123 @@ public class IamAdminService {
         clientRepo.save(client);
     }
 
+    // ── Platform operators (byz-admin org) ────────────────────────────────────
+
+    /**
+     * Users in the organization that owns the {@code byz-admin} client.
+     * Any active user in that org can sign into Admin (no separate roles).
+     */
+    public List<OperatorUserResponse> listOperators(UUID callerOrgId) {
+        UUID platformOrgId = requirePlatformOrg(callerOrgId);
+        return userRepo.findByOrganizationIdOrderByCreatedAtDesc(platformOrgId).stream()
+                .map(OperatorUserResponse::from)
+                .toList();
+    }
+
+    @Transactional
+    public OperatorUserResponse createOperator(UUID callerOrgId, CreateOperatorUserRequest req) {
+        Client platform = requirePlatformClient(callerOrgId);
+        UUID orgId = platform.getOrganizationId();
+        UUID tenantId = platform.getTenantId();
+        if (tenantId == null) {
+            tenantId = tenantRepo.findAll().stream()
+                    .filter(t -> orgId.equals(t.getOrganizationId()) && t.isActive())
+                    .map(Tenant::getId)
+                    .findFirst()
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "No active tenant for byz-admin organization; create one or set client tenant_id"));
+        }
+
+        String email = req.email().trim().toLowerCase();
+        String name = (req.name() != null && !req.name().isBlank())
+                ? req.name().trim()
+                : defaultNameFromEmail(email);
+
+        var existing = userRepo.findByOrganizationIdAndEmailIgnoreCase(orgId, email);
+        if (existing.isPresent()) {
+            User user = existing.get();
+            if (user.isActive()) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already registered");
+            }
+            user.setActive(true);
+            user.setName(name);
+            user.setPasswordHash(passwordEncoder.encode(req.password()));
+            user.setTenantId(tenantId);
+            User saved = userRepo.save(user);
+            publishUserRegistered(saved);
+            return OperatorUserResponse.from(saved);
+        }
+
+        User user = User.builder()
+                .organizationId(orgId)
+                .tenantId(tenantId)
+                .email(email)
+                .passwordHash(passwordEncoder.encode(req.password()))
+                .name(name)
+                .active(true)
+                .build();
+        User saved = userRepo.save(user);
+        publishUserRegistered(saved);
+        return OperatorUserResponse.from(saved);
+    }
+
+    @Transactional
+    public void deactivateOperator(UUID callerOrgId, UUID userId, UUID actorUserId) {
+        UUID platformOrgId = requirePlatformOrg(callerOrgId);
+        if (userId.equals(actorUserId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "You cannot deactivate your own account");
+        }
+        User user = userRepo.findByIdAndOrganizationId(userId, platformOrgId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        user.setActive(false);
+        userRepo.save(user);
+        refreshTokenRepo.revokeAllByUserId(userId);
+    }
+
+    @Transactional
+    public OperatorUserResponse restoreOperator(UUID callerOrgId, UUID userId) {
+        UUID platformOrgId = requirePlatformOrg(callerOrgId);
+        User user = userRepo.findByIdAndOrganizationId(userId, platformOrgId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        user.setActive(true);
+        return OperatorUserResponse.from(userRepo.save(user));
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private Client requirePlatformClient(UUID callerOrgId) {
+        Client client = clientRepo.findByClientIdAndActiveTrue(PLATFORM_CLIENT_ID)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Platform client byz-admin is not configured"));
+        if (!client.getOrganizationId().equals(callerOrgId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only users in the byz-admin organization can manage operators");
+        }
+        return client;
+    }
+
+    private UUID requirePlatformOrg(UUID callerOrgId) {
+        return requirePlatformClient(callerOrgId).getOrganizationId();
+    }
+
+    private void publishUserRegistered(User user) {
+        applicationEventPublisher.publishEvent(new UserRegisteredApplicationEvent(
+                this,
+                UserLifecycleEvent.userRegistered(
+                        user.getOrganizationId(),
+                        user.getTenantId(),
+                        user.getId(),
+                        user.getEmail(),
+                        user.getName()
+                )
+        ));
+    }
+
+    private static String defaultNameFromEmail(String email) {
+        int at = email.indexOf('@');
+        String local = at > 0 ? email.substring(0, at) : email;
+        return local.isBlank() ? "Operator" : local;
+    }
 
     private void requireOrg(UUID orgId) {
         if (!orgRepo.existsById(orgId)) {

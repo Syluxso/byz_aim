@@ -3,6 +3,7 @@ package com.nyberg.iam.admin;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -20,6 +21,34 @@ public class IamAdminController {
     @GetMapping("/ping")
     public java.util.Map<String, String> ping() {
         return java.util.Map.of("status", "ok", "service", "iam-admin");
+    }
+
+    // ── Platform operators (byz-admin org users) ──────────────────────────────
+
+    @GetMapping("/operators")
+    public List<OperatorUserResponse> listOperators() {
+        Jwt jwt = AdminAuth.requireJwt();
+        return service.listOperators(AdminAuth.organizationId(jwt));
+    }
+
+    @PostMapping("/operators")
+    @ResponseStatus(HttpStatus.CREATED)
+    public OperatorUserResponse createOperator(@Valid @RequestBody CreateOperatorUserRequest req) {
+        Jwt jwt = AdminAuth.requireJwt();
+        return service.createOperator(AdminAuth.organizationId(jwt), req);
+    }
+
+    @DeleteMapping("/operators/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deactivateOperator(@PathVariable UUID id) {
+        Jwt jwt = AdminAuth.requireJwt();
+        service.deactivateOperator(AdminAuth.organizationId(jwt), id, AdminAuth.subjectUserId(jwt));
+    }
+
+    @PostMapping("/operators/{id}/restore")
+    public OperatorUserResponse restoreOperator(@PathVariable UUID id) {
+        Jwt jwt = AdminAuth.requireJwt();
+        return service.restoreOperator(AdminAuth.organizationId(jwt), id);
     }
 
     @GetMapping("/orgs")

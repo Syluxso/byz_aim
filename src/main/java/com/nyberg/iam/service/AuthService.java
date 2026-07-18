@@ -3,9 +3,12 @@ package com.nyberg.iam.service;
 import com.nyberg.iam.config.JwtService;
 import com.nyberg.iam.domain.*;
 import com.nyberg.iam.dto.*;
+import com.nyberg.iam.events.UserLifecycleEvent;
+import com.nyberg.iam.events.UserRegisteredApplicationEvent;
 import com.nyberg.iam.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -32,6 +35,7 @@ public class AuthService {
     private final TokenEventRepository tokenEventRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     @Value("${iam.refresh-token-ttl-seconds}")
     private long refreshTokenTtlSeconds;
@@ -64,6 +68,57 @@ public class AuthService {
         userRepository.save(user);
 
         logEvent(TokenEventType.REGISTER, client.getOrganizationId(), user.getId(), client.getId());
+        publishUserRegistered(user);
+        return issueUserTokens(user, client);
+    }
+
+    /**
+     * Platform signup: create a new tenant under the client's organization, then register the user.
+     * Directory profile / membership is bootstrapped by the client after tokens are issued.
+     */
+    @Transactional
+    public TokenResponse signup(SignupRequest req) {
+        Client client = resolveClient(req.clientId());
+        UUID orgId = client.getOrganizationId();
+
+        String email = req.email().trim().toLowerCase();
+        if (userRepository.existsByOrganizationIdAndEmailIgnoreCase(orgId, email)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already registered for this organization");
+        }
+
+        String tenantName = req.tenantName().trim();
+        if (tenantName.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "tenantName is required");
+        }
+
+        String baseSlug = slugify(tenantName);
+        if (baseSlug.isBlank()) {
+            baseSlug = "tenant";
+        }
+        String slug = uniqueTenantSlug(orgId, baseSlug);
+
+        Tenant tenant = Tenant.builder()
+                .organizationId(orgId)
+                .name(tenantName)
+                .slug(slug)
+                .active(true)
+                .build();
+        tenantRepository.save(tenant);
+
+        String name = displayName(req.firstName(), req.lastName(), email);
+
+        User user = User.builder()
+                .organizationId(orgId)
+                .tenantId(tenant.getId())
+                .email(email)
+                .passwordHash(passwordEncoder.encode(req.password()))
+                .name(name)
+                .active(true)
+                .build();
+        userRepository.save(user);
+
+        logEvent(TokenEventType.REGISTER, orgId, user.getId(), client.getId());
+        publishUserRegistered(user);
         return issueUserTokens(user, client);
     }
 
@@ -168,6 +223,32 @@ public class AuthService {
         return local.isBlank() ? "User" : local;
     }
 
+    private static String displayName(String firstName, String lastName, String email) {
+        String combined = ((firstName == null ? "" : firstName.trim()) + " "
+                + (lastName == null ? "" : lastName.trim())).trim();
+        return combined.isBlank() ? defaultNameFromEmail(email) : combined;
+    }
+
+    private static String slugify(String input) {
+        return input.trim().toLowerCase()
+                .replaceAll("[^a-z0-9]+", "-")
+                .replaceAll("(^-|-$)", "");
+    }
+
+    private String uniqueTenantSlug(UUID organizationId, String baseSlug) {
+        String candidate = baseSlug;
+        int i = 2;
+        while (tenantRepository.findByOrganizationIdAndSlugIgnoreCase(organizationId, candidate).isPresent()) {
+            candidate = baseSlug + "-" + i;
+            i++;
+            if (i > 1000) {
+                candidate = baseSlug + "-" + UUID.randomUUID().toString().substring(0, 8);
+                break;
+            }
+        }
+        return candidate;
+    }
+
     private TokenResponse issueUserTokens(User user, Client client) {
         String accessToken = jwtService.createUserToken(
                 user.getId(), user.getOrganizationId(), user.getTenantId(), client.getClientId(), "byz-api");
@@ -203,6 +284,20 @@ public class AuthService {
                 .userId(userId)
                 .clientId(clientId)
                 .build());
+    }
+
+    /** Published as Spring event; Kafka send runs AFTER_COMMIT so rollbacks do not emit. */
+    private void publishUserRegistered(User user) {
+        applicationEventPublisher.publishEvent(new UserRegisteredApplicationEvent(
+                this,
+                UserLifecycleEvent.userRegistered(
+                        user.getOrganizationId(),
+                        user.getTenantId(),
+                        user.getId(),
+                        user.getEmail(),
+                        user.getName()
+                )
+        ));
     }
 
     static String hashToken(String raw) {

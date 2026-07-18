@@ -8,4 +8,6 @@ import java.util.UUID;
 
 public interface TenantRepository extends JpaRepository<Tenant, UUID> {
     Optional<Tenant> findByIdAndOrganizationIdAndActiveTrue(UUID id, UUID organizationId);
+
+    Optional<Tenant> findByOrganizationIdAndSlugIgnoreCase(UUID organizationId, String slug);
 }

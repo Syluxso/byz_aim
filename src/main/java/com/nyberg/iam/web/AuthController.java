@@ -2,6 +2,7 @@ package com.nyberg.iam.web;
 
 import com.nyberg.iam.dto.LoginRequest;
 import com.nyberg.iam.dto.RegisterRequest;
+import com.nyberg.iam.dto.SignupRequest;
 import com.nyberg.iam.dto.TokenResponse;
 import com.nyberg.iam.service.AuthService;
 import jakarta.validation.Valid;
@@ -20,6 +21,13 @@ public class AuthController {
     @ResponseStatus(HttpStatus.CREATED)
     public TokenResponse register(@Valid @RequestBody RegisterRequest request) {
         return authService.register(request);
+    }
+
+    /** Creates a new tenant under the client's org, then registers the user into it. */
+    @PostMapping("/signup")
+    @ResponseStatus(HttpStatus.CREATED)
+    public TokenResponse signup(@Valid @RequestBody SignupRequest request) {
+        return authService.signup(request);
     }
 
     @PostMapping("/login")

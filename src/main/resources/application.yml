@@ -16,9 +16,23 @@ spring:
     schemas: iam
     default-schema: iam
     create-schemas: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+    admin:
+      fail-fast: false
 
 server:
   port: ${PORT:8082}
+
+byz:
+  kafka:
+    enabled: ${BYZ_KAFKA_ENABLED:true}
+    topics:
+      iam-user: byz.iam.user
 
 iam:
   issuer: ${IAM_ISSUER:https://iam.byzantineapp.dev}
