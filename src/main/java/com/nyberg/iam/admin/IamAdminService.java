@@ -237,6 +237,17 @@ public class IamAdminService {
         return OperatorUserResponse.from(userRepo.save(user));
     }
 
+    @Transactional
+    public void setOperatorPassword(UUID callerOrgId, UUID userId, SetOperatorPasswordRequest req) {
+        UUID platformOrgId = requirePlatformOrg(callerOrgId);
+        User user = userRepo.findByIdAndOrganizationId(userId, platformOrgId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        user.setPasswordHash(passwordEncoder.encode(req.password()));
+        userRepo.save(user);
+        // Force re-login with the new password on other sessions.
+        refreshTokenRepo.revokeAllByUserId(userId);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private Client requirePlatformClient(UUID callerOrgId) {

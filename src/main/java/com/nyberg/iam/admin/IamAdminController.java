@@ -51,6 +51,13 @@ public class IamAdminController {
         return service.restoreOperator(AdminAuth.organizationId(jwt), id);
     }
 
+    @PostMapping("/operators/{id}/password")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void setOperatorPassword(@PathVariable UUID id, @Valid @RequestBody SetOperatorPasswordRequest req) {
+        Jwt jwt = AdminAuth.requireJwt();
+        service.setOperatorPassword(AdminAuth.organizationId(jwt), id, req);
+    }
+
     @GetMapping("/orgs")
     public List<OrgResponse> listOrgs() {
         return service.listOrgs();

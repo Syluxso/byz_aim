@@ -33,6 +33,8 @@ byz:
     enabled: ${BYZ_KAFKA_ENABLED:true}
     topics:
       iam-user: byz.iam.user
+      # Same topic as byz-gateway — Admin live feed / admin-gateway-sse
+      gateway-access: byz.gateway.access
 
 iam:
   issuer: ${IAM_ISSUER:https://iam.byzantineapp.dev}
