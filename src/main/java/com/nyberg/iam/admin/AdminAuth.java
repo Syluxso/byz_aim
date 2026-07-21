@@ -8,11 +8,11 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.UUID;
 
-final class AdminAuth {
+public final class AdminAuth {
 
     private AdminAuth() {}
 
-    static Jwt requireJwt() {
+    public static Jwt requireJwt() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !(auth.getPrincipal() instanceof Jwt jwt)) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication required");
@@ -20,7 +20,7 @@ final class AdminAuth {
         return jwt;
     }
 
-    static UUID organizationId(Jwt jwt) {
+    public static UUID organizationId(Jwt jwt) {
         String raw = jwt.getClaimAsString("organization_id");
         if (raw == null || raw.isBlank()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Token missing organization_id");
@@ -28,7 +28,7 @@ final class AdminAuth {
         return UUID.fromString(raw);
     }
 
-    static UUID subjectUserId(Jwt jwt) {
+    public static UUID subjectUserId(Jwt jwt) {
         try {
             return UUID.fromString(jwt.getSubject());
         } catch (Exception e) {

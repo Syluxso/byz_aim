@@ -34,6 +34,9 @@ public class RefreshToken {
     @Column(nullable = false)
     private boolean revoked;
 
+    @Column(name = "device_id")
+    private UUID deviceId;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 

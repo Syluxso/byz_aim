@@ -14,5 +14,7 @@ public record SignupRequest(
         String lastName,
         String phone, // accepted for forward-compat; stored by Directory after signup
         @NotBlank String tenantName,
-        @NotBlank String clientId
+        @NotBlank String clientId,
+        String deviceId,
+        String deviceName
 ) {}

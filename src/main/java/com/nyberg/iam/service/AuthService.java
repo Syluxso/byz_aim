@@ -1,6 +1,8 @@
 package com.nyberg.iam.service;
 
 import com.nyberg.iam.config.JwtService;
+import com.nyberg.iam.device.DeviceHints;
+import com.nyberg.iam.device.DeviceService;
 import com.nyberg.iam.domain.*;
 import com.nyberg.iam.dto.*;
 import com.nyberg.iam.events.UserLifecycleEvent;
@@ -33,6 +35,7 @@ public class AuthService {
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final TokenEventRepository tokenEventRepository;
+    private final DeviceService deviceService;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final ApplicationEventPublisher applicationEventPublisher;
@@ -43,7 +46,7 @@ public class AuthService {
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Transactional
-    public TokenResponse register(RegisterRequest req) {
+    public TokenResponse register(RegisterRequest req, DeviceHints hints) {
         Client client = resolveClient(req.clientId());
         Tenant tenant = tenantRepository.findByIdAndOrganizationIdAndActiveTrue(req.tenantId(), client.getOrganizationId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid tenant for organization"));
@@ -69,7 +72,7 @@ public class AuthService {
 
         logEvent(TokenEventType.REGISTER, client.getOrganizationId(), user.getId(), client.getId());
         publishUserRegistered(user);
-        return issueUserTokens(user, client);
+        return issueUserTokens(user, client, hints);
     }
 
     /**
@@ -77,7 +80,7 @@ public class AuthService {
      * Directory profile / membership is bootstrapped by the client after tokens are issued.
      */
     @Transactional
-    public TokenResponse signup(SignupRequest req) {
+    public TokenResponse signup(SignupRequest req, DeviceHints hints) {
         Client client = resolveClient(req.clientId());
         UUID orgId = client.getOrganizationId();
 
@@ -119,11 +122,11 @@ public class AuthService {
 
         logEvent(TokenEventType.REGISTER, orgId, user.getId(), client.getId());
         publishUserRegistered(user);
-        return issueUserTokens(user, client);
+        return issueUserTokens(user, client, hints);
     }
 
     @Transactional
-    public TokenResponse login(LoginRequest req) {
+    public TokenResponse login(LoginRequest req, DeviceHints hints) {
         Client client = resolveClient(req.clientId());
         String email = req.email().trim().toLowerCase();
         User user = userRepository.findByOrganizationIdAndEmailIgnoreCaseAndActiveTrue(client.getOrganizationId(), email)
@@ -134,11 +137,11 @@ public class AuthService {
         }
 
         logEvent(TokenEventType.LOGIN, client.getOrganizationId(), user.getId(), client.getId());
-        return issueUserTokens(user, client);
+        return issueUserTokens(user, client, hints);
     }
 
     @Transactional
-    public TokenResponse refresh(RefreshRequest req) {
+    public TokenResponse refresh(RefreshRequest req, DeviceHints hints) {
         Client client = resolveClient(req.clientId());
         String hash = hashToken(req.refreshToken());
         RefreshToken stored = refreshTokenRepository.findByTokenHashAndRevokedFalse(hash)
@@ -156,7 +159,7 @@ public class AuthService {
         refreshTokenRepository.save(stored);
 
         logEvent(TokenEventType.REFRESH, client.getOrganizationId(), user.getId(), client.getId());
-        return issueUserTokens(user, client);
+        return issueUserTokens(user, client, hints);
     }
 
     @Transactional
@@ -249,14 +252,15 @@ public class AuthService {
         return candidate;
     }
 
-    private TokenResponse issueUserTokens(User user, Client client) {
+    private TokenResponse issueUserTokens(User user, Client client, DeviceHints hints) {
+        var device = deviceService.touch(user, client, hints != null ? hints : DeviceHints.empty());
         String accessToken = jwtService.createUserToken(
                 user.getId(), user.getOrganizationId(), user.getTenantId(), client.getClientId(), "byz-api");
-        String refreshToken = createRefreshToken(user, client);
+        String refreshToken = createRefreshToken(user, client, device.getId());
         return TokenResponse.of(accessToken, jwtService.accessTokenTtlSeconds(), refreshToken);
     }
 
-    private String createRefreshToken(User user, Client client) {
+    private String createRefreshToken(User user, Client client, UUID deviceId) {
         byte[] bytes = new byte[32];
         secureRandom.nextBytes(bytes);
         String raw = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
@@ -267,6 +271,7 @@ public class AuthService {
                 .tokenHash(hashToken(raw))
                 .expiresAt(Instant.now().plusSeconds(refreshTokenTtlSeconds))
                 .revoked(false)
+                .deviceId(deviceId)
                 .build();
         refreshTokenRepository.save(token);
         return raw;

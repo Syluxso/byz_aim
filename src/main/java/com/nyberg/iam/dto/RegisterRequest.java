@@ -11,5 +11,7 @@ public record RegisterRequest(
         @NotBlank String password,
         String name, // optional — defaults to email local-part when blank
         @NotBlank String clientId,
-        @NotNull UUID tenantId
+        @NotNull UUID tenantId,
+        String deviceId,
+        String deviceName
 ) {}

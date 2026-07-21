@@ -4,5 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 
 public record RefreshRequest(
         @NotBlank String refreshToken,
-        @NotBlank String clientId
+        @NotBlank String clientId,
+        String deviceId,
+        String deviceName
 ) {}

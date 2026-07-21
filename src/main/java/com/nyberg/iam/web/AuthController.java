@@ -1,10 +1,12 @@
 package com.nyberg.iam.web;
 
+import com.nyberg.iam.device.DeviceHintsFactory;
 import com.nyberg.iam.dto.LoginRequest;
 import com.nyberg.iam.dto.RegisterRequest;
 import com.nyberg.iam.dto.SignupRequest;
 import com.nyberg.iam.dto.TokenResponse;
 import com.nyberg.iam.service.AuthService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -19,19 +21,19 @@ public class AuthController {
 
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
-    public TokenResponse register(@Valid @RequestBody RegisterRequest request) {
-        return authService.register(request);
+    public TokenResponse register(@Valid @RequestBody RegisterRequest request, HttpServletRequest http) {
+        return authService.register(request, DeviceHintsFactory.from(http, request.deviceId(), request.deviceName()));
     }
 
     /** Creates a new tenant under the client's org, then registers the user into it. */
     @PostMapping("/signup")
     @ResponseStatus(HttpStatus.CREATED)
-    public TokenResponse signup(@Valid @RequestBody SignupRequest request) {
-        return authService.signup(request);
+    public TokenResponse signup(@Valid @RequestBody SignupRequest request, HttpServletRequest http) {
+        return authService.signup(request, DeviceHintsFactory.from(http, request.deviceId(), request.deviceName()));
     }
 
     @PostMapping("/login")
-    public TokenResponse login(@Valid @RequestBody LoginRequest request) {
-        return authService.login(request);
+    public TokenResponse login(@Valid @RequestBody LoginRequest request, HttpServletRequest http) {
+        return authService.login(request, DeviceHintsFactory.from(http, request.deviceId(), request.deviceName()));
     }
 }
