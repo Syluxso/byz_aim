@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.Date;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -27,9 +28,16 @@ public class JwtService {
         this.keyProvider = keyProvider;
     }
 
-    public String createUserToken(UUID userId, UUID organizationId, UUID tenantId, String clientId, String audience) {
+    public String createUserToken(
+            UUID userId,
+            UUID organizationId,
+            UUID tenantId,
+            String clientId,
+            String audience,
+            List<String> roles
+    ) {
         Instant now = Instant.now();
-        return Jwts.builder()
+        var builder = Jwts.builder()
                 .header().keyId(keyProvider.keyId()).and()
                 .issuer(issuer)
                 .subject(userId.toString())
@@ -37,11 +45,15 @@ public class JwtService {
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plusSeconds(accessTokenTtlSeconds)))
                 .claim("organization_id", organizationId.toString())
-                .claim("tenant_id", tenantId.toString())
                 .claim("client_id", clientId)
-                .claim("grant_type", "password")
-                .signWith(keyProvider.keyPair().getPrivate())
-                .compact();
+                .claim("grant_type", "password");
+        if (tenantId != null) {
+            builder.claim("tenant_id", tenantId.toString());
+        }
+        if (roles != null && !roles.isEmpty()) {
+            builder.claim("roles", roles);
+        }
+        return builder.signWith(keyProvider.keyPair().getPrivate()).compact();
     }
 
     public String createServiceToken(String clientId, UUID organizationId, UUID tenantId, String audience) {
@@ -76,6 +88,44 @@ public class JwtService {
                 .claim("grant_type", "subject");
         if (tenantId != null) {
             builder.claim("tenant_id", tenantId.toString());
+        }
+        return builder.signWith(keyProvider.keyPair().getPrivate()).compact();
+    }
+
+    public String createApiKeyToken(
+            UUID tokenId,
+            UUID organizationId,
+            UUID tenantId,
+            UUID userId,
+            String appId,
+            String grantType,
+            String audience,
+            List<String> roles
+    ) {
+        Instant now = Instant.now();
+        var builder = Jwts.builder()
+                .header().keyId(keyProvider.keyId()).and()
+                .issuer(issuer)
+                .audience().add(audience).and()
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(now.plusSeconds(accessTokenTtlSeconds)))
+                .claim("organization_id", organizationId.toString())
+                .claim("token_id", tokenId.toString())
+                .claim("app_id", appId)
+                .claim("grant_type", grantType);
+        if (userId != null) {
+            builder.subject(userId.toString());
+        } else {
+            builder.subject(tokenId.toString());
+        }
+        if (tenantId != null) {
+            builder.claim("tenant_id", tenantId.toString());
+        }
+        if (userId != null) {
+            builder.claim("user_id", userId.toString());
+        }
+        if (roles != null && !roles.isEmpty()) {
+            builder.claim("roles", roles);
         }
         return builder.signWith(keyProvider.keyPair().getPrivate()).compact();
     }

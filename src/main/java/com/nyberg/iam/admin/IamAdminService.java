@@ -4,6 +4,7 @@ import com.nyberg.iam.domain.*;
 import com.nyberg.iam.events.UserLifecycleEvent;
 import com.nyberg.iam.events.UserRegisteredApplicationEvent;
 import com.nyberg.iam.repository.*;
+import com.nyberg.iam.service.RoleService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
@@ -30,6 +31,7 @@ public class IamAdminService {
     private final RefreshTokenRepository refreshTokenRepo;
     private final PasswordEncoder passwordEncoder;
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final RoleService roleService;
 
     // ── Orgs ──────────────────────────────────────────────────────────────────
 
@@ -198,6 +200,7 @@ public class IamAdminService {
             user.setPasswordHash(passwordEncoder.encode(req.password()));
             user.setTenantId(tenantId);
             User saved = userRepo.save(user);
+            roleService.assignDefaultsForNewUser(saved);
             publishUserRegistered(saved);
             return OperatorUserResponse.from(saved);
         }
@@ -211,6 +214,7 @@ public class IamAdminService {
                 .active(true)
                 .build();
         User saved = userRepo.save(user);
+        roleService.assignDefaultsForNewUser(saved);
         publishUserRegistered(saved);
         return OperatorUserResponse.from(saved);
     }

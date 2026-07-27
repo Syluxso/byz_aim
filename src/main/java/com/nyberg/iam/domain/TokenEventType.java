@@ -5,5 +5,7 @@ public enum TokenEventType {
     REGISTER,
     REFRESH,
     CLIENT_CREDENTIALS,
-    SUBJECT
+    SUBJECT,
+    API_KEY_CREATE,
+    API_KEY_EXCHANGE
 }

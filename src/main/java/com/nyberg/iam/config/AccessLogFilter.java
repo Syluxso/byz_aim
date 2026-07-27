@@ -81,6 +81,7 @@ public class AccessLogFilter extends OncePerRequestFilter {
 
         long durationMs = (System.nanoTime() - startedNanos) / 1_000_000L;
         String clientIp = request.getRemoteAddr();
+        AccessJwtClaims.Claims claims = AccessJwtClaims.parse(request.getHeader("Authorization"));
 
         kafka.publishAsync(new IamAccessEvent(
                 UUID.randomUUID().toString(),
@@ -92,7 +93,9 @@ public class AccessLogFilter extends OncePerRequestFilter {
                 response.getStatus(),
                 durationMs,
                 clientIp,
-                "iam-direct"
+                "iam-direct",
+                claims != null ? claims.organizationId() : null,
+                claims != null ? claims.clientId() : null
         ));
     }
 }

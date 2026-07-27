@@ -55,6 +55,12 @@ public class JjwtAuthenticationFilter extends OncePerRequestFilter {
             return;
         }
 
+        // Static API secrets are not JWTs — leave unauthenticated for resolve / downstream handlers.
+        if (token.startsWith("byz_sk_") || token.chars().filter(ch -> ch == '.').count() != 2) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
         try {
             RSAPublicKey publicKey = (RSAPublicKey) keyProvider.keyPair().getPublic();
             var jws = Jwts.parser()
@@ -75,7 +81,8 @@ public class JjwtAuthenticationFilter extends OncePerRequestFilter {
                     : issuedAt.plusSeconds(3600);
 
             Jwt jwt = new Jwt(token, issuedAt, expiresAt, headers, claimMap);
-            var auth = new JwtAuthenticationToken(jwt, AuthorityUtils.NO_AUTHORITIES, jwt.getSubject());
+            var authorities = authoritiesFromClaims(claimMap);
+            var auth = new JwtAuthenticationToken(jwt, authorities, jwt.getSubject());
             SecurityContextHolder.getContext().setAuthentication(auth);
             filterChain.doFilter(request, response);
         } catch (io.jsonwebtoken.JwtException | IllegalArgumentException ex) {
@@ -85,6 +92,29 @@ public class JjwtAuthenticationFilter extends OncePerRequestFilter {
             SecurityContextHolder.clearContext();
             writeUnauthorized(response, "Token validation failed");
         }
+    }
+
+    private static java.util.Collection<? extends org.springframework.security.core.GrantedAuthority> authoritiesFromClaims(
+            Map<String, Object> claimMap) {
+        Object raw = claimMap.get("roles");
+        if (!(raw instanceof Collection<?> roles) || roles.isEmpty()) {
+            return AuthorityUtils.NO_AUTHORITIES;
+        }
+        List<String> names = new ArrayList<>();
+        for (Object role : roles) {
+            if (role == null) continue;
+            String value = role.toString().trim();
+            if (value.isEmpty()) continue;
+            // Spring's hasRole() strips ROLE_ prefix; keep claim as authority as-is too.
+            names.add(value);
+            if (!value.startsWith("ROLE_")) {
+                names.add("ROLE_" + value.replace(':', '_'));
+            }
+        }
+        if (names.isEmpty()) {
+            return AuthorityUtils.NO_AUTHORITIES;
+        }
+        return AuthorityUtils.createAuthorityList(names.toArray(String[]::new));
     }
 
     private static void writeUnauthorized(HttpServletResponse response, String detail) throws IOException {

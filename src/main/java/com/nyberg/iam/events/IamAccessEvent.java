@@ -15,7 +15,9 @@ public record IamAccessEvent(
         int status,
         long durationMs,
         String clientIp,
-        String routeId
+        String routeId,
+        String organizationId,
+        String clientId
 ) {
     public static final String TYPE = "iam.request.completed";
 }

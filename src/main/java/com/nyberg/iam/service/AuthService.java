@@ -24,6 +24,7 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -38,6 +39,7 @@ public class AuthService {
     private final DeviceService deviceService;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final RoleService roleService;
     private final ApplicationEventPublisher applicationEventPublisher;
 
     @Value("${iam.refresh-token-ttl-seconds}")
@@ -70,13 +72,15 @@ public class AuthService {
                 .build();
         userRepository.save(user);
 
+        roleService.assignDefaultsForNewUser(user);
         logEvent(TokenEventType.REGISTER, client.getOrganizationId(), user.getId(), client.getId());
         publishUserRegistered(user);
         return issueUserTokens(user, client, hints);
     }
 
     /**
-     * Platform signup: create a new tenant under the client's organization, then register the user.
+     * Platform signup: optionally create a tenant under the client's organization, then register the user.
+     * When {@code tenantName} is blank/omitted, the user is created with no tenant (prompt later in-app).
      * Directory profile / membership is bootstrapped by the client after tokens are issued.
      */
     @Transactional
@@ -89,30 +93,30 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already registered for this organization");
         }
 
-        String tenantName = req.tenantName().trim();
-        if (tenantName.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "tenantName is required");
-        }
+        UUID tenantId = null;
+        if (req.tenantName() != null && !req.tenantName().isBlank()) {
+            String tenantName = req.tenantName().trim();
+            String baseSlug = slugify(tenantName);
+            if (baseSlug.isBlank()) {
+                baseSlug = "tenant";
+            }
+            String slug = uniqueTenantSlug(orgId, baseSlug);
 
-        String baseSlug = slugify(tenantName);
-        if (baseSlug.isBlank()) {
-            baseSlug = "tenant";
+            Tenant tenant = Tenant.builder()
+                    .organizationId(orgId)
+                    .name(tenantName)
+                    .slug(slug)
+                    .active(true)
+                    .build();
+            tenantRepository.save(tenant);
+            tenantId = tenant.getId();
         }
-        String slug = uniqueTenantSlug(orgId, baseSlug);
-
-        Tenant tenant = Tenant.builder()
-                .organizationId(orgId)
-                .name(tenantName)
-                .slug(slug)
-                .active(true)
-                .build();
-        tenantRepository.save(tenant);
 
         String name = displayName(req.firstName(), req.lastName(), email);
 
         User user = User.builder()
                 .organizationId(orgId)
-                .tenantId(tenant.getId())
+                .tenantId(tenantId)
                 .email(email)
                 .passwordHash(passwordEncoder.encode(req.password()))
                 .name(name)
@@ -120,6 +124,7 @@ public class AuthService {
                 .build();
         userRepository.save(user);
 
+        roleService.assignDefaultsForNewUser(user);
         logEvent(TokenEventType.REGISTER, orgId, user.getId(), client.getId());
         publishUserRegistered(user);
         return issueUserTokens(user, client, hints);
@@ -254,8 +259,10 @@ public class AuthService {
 
     private TokenResponse issueUserTokens(User user, Client client, DeviceHints hints) {
         var device = deviceService.touch(user, client, hints != null ? hints : DeviceHints.empty());
+        roleService.ensureOrgMemberIfMissing(user);
+        List<String> roles = roleService.claimsForToken(user.getId(), user.getOrganizationId(), user.getTenantId());
         String accessToken = jwtService.createUserToken(
-                user.getId(), user.getOrganizationId(), user.getTenantId(), client.getClientId(), "byz-api");
+                user.getId(), user.getOrganizationId(), user.getTenantId(), client.getClientId(), "byz-api", roles);
         String refreshToken = createRefreshToken(user, client, device.getId());
         return TokenResponse.of(accessToken, jwtService.accessTokenTtlSeconds(), refreshToken);
     }
