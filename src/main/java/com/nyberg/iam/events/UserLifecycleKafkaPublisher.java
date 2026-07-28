@@ -25,7 +25,15 @@ public class UserLifecycleKafkaPublisher {
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onUserRegistered(UserRegisteredApplicationEvent event) {
-        UserLifecycleEvent payload = event.getPayload();
+        publish(event.getPayload());
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onPasswordResetRequested(PasswordResetRequestedApplicationEvent event) {
+        publish(event.getPayload());
+    }
+
+    private void publish(UserLifecycleEvent payload) {
         try {
             String json = objectMapper.writeValueAsString(payload);
             String key = payload.userId().toString();

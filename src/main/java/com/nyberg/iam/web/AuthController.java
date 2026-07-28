@@ -1,11 +1,14 @@
 package com.nyberg.iam.web;
 
 import com.nyberg.iam.device.DeviceHintsFactory;
+import com.nyberg.iam.dto.ForgotPasswordRequest;
 import com.nyberg.iam.dto.LoginRequest;
 import com.nyberg.iam.dto.RegisterRequest;
+import com.nyberg.iam.dto.ResetPasswordRequest;
 import com.nyberg.iam.dto.SignupRequest;
 import com.nyberg.iam.dto.TokenResponse;
 import com.nyberg.iam.service.AuthService;
+import com.nyberg.iam.service.PasswordResetService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +21,7 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final AuthService authService;
+    private final PasswordResetService passwordResetService;
 
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
@@ -35,5 +39,18 @@ public class AuthController {
     @PostMapping("/login")
     public TokenResponse login(@Valid @RequestBody LoginRequest request, HttpServletRequest http) {
         return authService.login(request, DeviceHintsFactory.from(http, request.deviceId(), request.deviceName()));
+    }
+
+    /** Always 204 — does not reveal whether the email exists. */
+    @PostMapping("/forgot-password")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        passwordResetService.forgotPassword(request);
+    }
+
+    @PostMapping("/reset-password")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        passwordResetService.resetPassword(request);
     }
 }

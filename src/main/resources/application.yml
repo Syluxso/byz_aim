@@ -41,8 +41,11 @@ iam:
   access-token-ttl-seconds: ${ACCESS_TOKEN_TTL:3600}
   subject-token-ttl-seconds: ${SUBJECT_TOKEN_TTL:900}
   refresh-token-ttl-seconds: ${REFRESH_TOKEN_TTL:2592000}
+  password-reset-ttl-seconds: ${PASSWORD_RESET_TTL:3600}
   key-dir: ${IAM_KEY_DIR:./keys}
   public-base-url: ${IAM_PUBLIC_BASE_URL:https://iam.byzantineapp.dev}
+  # Front origin used in password-reset email links
+  app-public-base-url: ${APP_PUBLIC_BASE_URL:http://localhost:4200}
 
 encryption:
   key: ${ENCRYPTION_KEY:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}

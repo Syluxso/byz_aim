@@ -7,5 +7,6 @@ public enum TokenEventType {
     CLIENT_CREDENTIALS,
     SUBJECT,
     API_KEY_CREATE,
-    API_KEY_EXCHANGE
+    API_KEY_EXCHANGE,
+    PASSWORD_RESET
 }

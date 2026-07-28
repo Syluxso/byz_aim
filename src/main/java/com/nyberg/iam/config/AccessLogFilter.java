@@ -2,6 +2,7 @@ package com.nyberg.iam.config;
 
 import com.nyberg.iam.events.IamAccessEvent;
 import com.nyberg.iam.events.IamAccessKafkaPublisher;
+import com.nyberg.iam.service.AuthService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -83,6 +84,23 @@ public class AccessLogFilter extends OncePerRequestFilter {
         String clientIp = request.getRemoteAddr();
         AccessJwtClaims.Claims claims = AccessJwtClaims.parse(request.getHeader("Authorization"));
 
+        String organizationId = claims != null ? claims.organizationId() : null;
+        String clientId = claims != null ? claims.clientId() : null;
+        // Login/signup have no Bearer yet — SPA sends X-Client-Id (public client id).
+        if (clientId == null || clientId.isBlank()) {
+            String headerClient = request.getHeader("X-Client-Id");
+            if (headerClient != null && !headerClient.isBlank()) {
+                clientId = headerClient.trim();
+            }
+        }
+        // Auth body clientId (login/signup/refresh) — set after AuthService resolves the client.
+        if (clientId == null || clientId.isBlank()) {
+            Object resolved = request.getAttribute(AuthService.RESOLVED_CLIENT_ID_ATTR);
+            if (resolved instanceof String s && !s.isBlank()) {
+                clientId = s;
+            }
+        }
+
         kafka.publishAsync(new IamAccessEvent(
                 UUID.randomUUID().toString(),
                 IamAccessEvent.TYPE,
@@ -94,8 +112,8 @@ public class AccessLogFilter extends OncePerRequestFilter {
                 durationMs,
                 clientIp,
                 "iam-direct",
-                claims != null ? claims.organizationId() : null,
-                claims != null ? claims.clientId() : null
+                organizationId,
+                clientId
         ));
     }
 }

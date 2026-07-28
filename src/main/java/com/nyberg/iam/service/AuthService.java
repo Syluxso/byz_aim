@@ -15,6 +15,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.context.request.RequestAttributes;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.nio.charset.StandardCharsets;
@@ -30,6 +33,9 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class AuthService {
+
+    /** Public client_id string for AccessLogFilter when JWT / X-Client-Id are absent. */
+    public static final String RESOLVED_CLIENT_ID_ATTR = "byz.resolvedClientId";
 
     private final ClientRepository clientRepository;
     private final TenantRepository tenantRepository;
@@ -295,8 +301,14 @@ public class AuthService {
     }
 
     private Client resolveClient(String clientId) {
-        return clientRepository.findByClientIdAndActiveTrue(clientId)
+        Client client = clientRepository.findByClientIdAndActiveTrue(clientId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid client_id"));
+        // Body clientId is validated here; stash for access telemetry (refresh often has no X-Client-Id).
+        RequestAttributes attrs = RequestContextHolder.getRequestAttributes();
+        if (attrs instanceof ServletRequestAttributes sra) {
+            sra.getRequest().setAttribute(RESOLVED_CLIENT_ID_ATTR, client.getClientId());
+        }
+        return client;
     }
 
     private void logEvent(TokenEventType type, UUID organizationId, UUID userId, UUID clientId) {
