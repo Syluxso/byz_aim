@@ -24,7 +24,7 @@ import java.util.List;
 @EnableWebSecurity
 public class SecurityConfig {
 
-    @Value("${CORS_ORIGINS:http://localhost:4200,http://localhost:4201,http://localhost:4202,http://localhost:4203,http://localhost:8100,http://localhost:8101,http://localhost:8102,http://127.0.0.1:4200,http://127.0.0.1:4201,http://127.0.0.1:4202,http://127.0.0.1:4203,http://127.0.0.1:8100,http://127.0.0.1:8101,http://127.0.0.1:8102,https://sys.byzantineapp.dev,https://admin.byzantineapp.dev,https://danielxclaire.me,https://www.danielxclaire.me,https://danielxclaire.com,https://www.danielxclaire.com}")
+    @Value("${CORS_ORIGINS:http://localhost:4200,http://localhost:4201,http://localhost:4202,http://localhost:4203,http://localhost:8100,http://localhost:8101,http://localhost:8102,http://127.0.0.1:4200,http://127.0.0.1:4201,http://127.0.0.1:4202,http://127.0.0.1:4203,http://127.0.0.1:8100,http://127.0.0.1:8101,http://127.0.0.1:8102,https://sys.byzantineapp.dev,https://admin.byzantineapp.dev,https://byzantineapp.com,https://www.byzantineapp.com,https://app.byzantineapp.com,https://danielxclaire.me,https://www.danielxclaire.me,https://danielxclaire.com,https://www.danielxclaire.com}")
     private String corsOrigins;
 
     @Bean
