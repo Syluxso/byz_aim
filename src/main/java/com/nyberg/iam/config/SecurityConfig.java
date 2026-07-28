@@ -38,6 +38,7 @@ public class SecurityConfig {
                         .requestMatchers("/.well-known/jwks.json").permitAll()
                         .requestMatchers("/api/v1/build-info").permitAll()
                         .requestMatchers("/api/v1/register", "/api/v1/signup", "/api/v1/login",
+                                "/api/v1/login/microsoft", "/api/v1/login/microsoft/**",
                                 "/api/v1/oauth/token", "/api/v1/oauth/refresh",
                                 "/api/v1/api-keys/resolve").permitAll()
                         .anyRequest().authenticated())

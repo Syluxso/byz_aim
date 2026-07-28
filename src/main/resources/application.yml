@@ -42,6 +42,10 @@ iam:
   subject-token-ttl-seconds: ${SUBJECT_TOKEN_TTL:900}
   refresh-token-ttl-seconds: ${REFRESH_TOKEN_TTL:2592000}
   key-dir: ${IAM_KEY_DIR:./keys}
+  public-base-url: ${IAM_PUBLIC_BASE_URL:https://iam.byzantineapp.dev}
+
+encryption:
+  key: ${ENCRYPTION_KEY:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
 
 management:
   endpoints:

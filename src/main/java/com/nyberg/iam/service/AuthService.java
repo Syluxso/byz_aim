@@ -257,6 +257,16 @@ public class AuthService {
         return candidate;
     }
 
+    /** Used by federated login (Microsoft) after user is resolved. */
+    @Transactional
+    public TokenResponse issueSession(User user, Client client, DeviceHints hints) {
+        return issueUserTokens(user, client, hints);
+    }
+
+    public Client requireActiveClient(String clientId) {
+        return resolveClient(clientId);
+    }
+
     private TokenResponse issueUserTokens(User user, Client client, DeviceHints hints) {
         var device = deviceService.touch(user, client, hints != null ? hints : DeviceHints.empty());
         roleService.ensureOrgMemberIfMissing(user);
