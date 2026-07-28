@@ -17,14 +17,39 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
 
-    @Value("${CORS_ORIGINS:http://localhost:4200,http://localhost:4201,http://localhost:4202,http://localhost:4203,http://localhost:8100,http://localhost:8101,http://localhost:8102,http://127.0.0.1:4200,http://127.0.0.1:4201,http://127.0.0.1:4202,http://127.0.0.1:4203,http://127.0.0.1:8100,http://127.0.0.1:8101,http://127.0.0.1:8102,https://sys.byzantineapp.dev,https://admin.byzantineapp.dev,https://byzantineapp.com,https://www.byzantineapp.com,https://app.byzantineapp.com,https://danielxclaire.me,https://www.danielxclaire.me,https://danielxclaire.com,https://www.danielxclaire.com}")
+    /**
+     * Always allowed for local Ionic/Angular work. Merged into whatever {@code CORS_ORIGINS}
+     * is set on the host (host env often omits :8100 and breaks ionic serve).
+     */
+    private static final List<String> LOCAL_DEV_ORIGINS = List.of(
+            "http://localhost:4200",
+            "http://localhost:4201",
+            "http://localhost:4202",
+            "http://localhost:4203",
+            "http://localhost:8100",
+            "http://localhost:8101",
+            "http://localhost:8102",
+            "http://127.0.0.1:4200",
+            "http://127.0.0.1:4201",
+            "http://127.0.0.1:4202",
+            "http://127.0.0.1:4203",
+            "http://127.0.0.1:8100",
+            "http://127.0.0.1:8101",
+            "http://127.0.0.1:8102"
+    );
+
+    @Value("${CORS_ORIGINS:https://sys.byzantineapp.dev,https://admin.byzantineapp.dev,https://byzantineapp.com,https://www.byzantineapp.com,https://app.byzantineapp.com}")
     private String corsOrigins;
 
     @Bean
@@ -68,7 +93,15 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(Arrays.asList(corsOrigins.split(",")));
+        Set<String> origins = new LinkedHashSet<>();
+        if (corsOrigins != null && !corsOrigins.isBlank()) {
+            origins.addAll(Arrays.stream(corsOrigins.split(","))
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .collect(Collectors.toList()));
+        }
+        origins.addAll(LOCAL_DEV_ORIGINS);
+        config.setAllowedOrigins(new ArrayList<>(origins));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);
