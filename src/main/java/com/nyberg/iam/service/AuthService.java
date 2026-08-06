@@ -278,7 +278,7 @@ public class AuthService {
         roleService.ensureOrgMemberIfMissing(user);
         List<String> roles = roleService.claimsForToken(user.getId(), user.getOrganizationId(), user.getTenantId());
         String accessToken = jwtService.createUserToken(
-                user.getId(), user.getOrganizationId(), user.getTenantId(), client.getClientId(), "byz-api", roles);
+                user.getId(), user.getOrganizationId(), user.getTenantId(), client.getClientId(), user.getEmail(), "byz-api", roles);
         String refreshToken = createRefreshToken(user, client, device.getId());
         return TokenResponse.of(accessToken, jwtService.accessTokenTtlSeconds(), refreshToken);
     }

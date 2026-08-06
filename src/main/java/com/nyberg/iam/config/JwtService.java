@@ -33,6 +33,7 @@ public class JwtService {
             UUID organizationId,
             UUID tenantId,
             String clientId,
+            String email,
             String audience,
             List<String> roles
     ) {
@@ -49,6 +50,9 @@ public class JwtService {
                 .claim("grant_type", "password");
         if (tenantId != null) {
             builder.claim("tenant_id", tenantId.toString());
+        }
+        if (email != null && !email.isBlank()) {
+            builder.claim("email", email.trim().toLowerCase(java.util.Locale.ROOT));
         }
         if (roles != null && !roles.isEmpty()) {
             builder.claim("roles", roles);
