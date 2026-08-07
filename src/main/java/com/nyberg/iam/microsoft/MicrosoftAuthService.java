@@ -86,6 +86,8 @@ public class MicrosoftAuthService {
                 .build());
 
         String callback = iamPublicBaseUrl.replaceAll("/$", "") + "/api/v1/login/microsoft/callback";
+        // build(true) assumes already-encoded values and rejects spaces in scope.
+        // build().encode() percent-encodes "openid profile email offline_access" correctly.
         return UriComponentsBuilder
                 .fromUriString(creds.authorityBase() + "/oauth2/v2.0/authorize")
                 .queryParam("client_id", creds.clientId())
@@ -98,7 +100,8 @@ public class MicrosoftAuthService {
                 .queryParam("code_challenge", challenge)
                 .queryParam("code_challenge_method", "S256")
                 .queryParam("prompt", "select_account")
-                .build(true)
+                .build()
+                .encode()
                 .toUriString();
     }
 
@@ -155,7 +158,8 @@ public class MicrosoftAuthService {
         return UriComponentsBuilder
                 .fromUriString(authState.getRedirectUri())
                 .queryParam("microsoft_login", ticketId.toString())
-                .build(true)
+                .build()
+                .encode()
                 .toUriString();
     }
 
