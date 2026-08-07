@@ -38,6 +38,13 @@ public class JjwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        // Browser OAuth start/callback/exchange — no Byz JWT expected.
+        return path != null && path.contains("/api/v1/login/microsoft");
+    }
+
+    @Override
     protected void doFilterInternal(
             HttpServletRequest request,
             HttpServletResponse response,

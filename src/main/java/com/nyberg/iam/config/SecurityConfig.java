@@ -3,15 +3,18 @@ package com.nyberg.iam.config;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configuration.WebSecurityCustomizer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -52,6 +55,18 @@ public class SecurityConfig {
     @Value("${CORS_ORIGINS:https://sys.byzantineapp.dev,https://admin.byzantineapp.dev,https://byzantineapp.com,https://www.byzantineapp.com,https://app.byzantineapp.com}")
     private String corsOrigins;
 
+    /**
+     * Entra browser redirects hit start/callback with no Bearer token. Ignore only GETs
+     * so path-matching quirks cannot force 401. Keep POST /exchange on the security chain
+     * (permitAll + CORS) for SPA ticket exchange.
+     */
+    @Bean
+    public WebSecurityCustomizer microsoftLoginSecurityCustomizer() {
+        return web -> web.ignoring().requestMatchers(
+                AntPathRequestMatcher.antMatcher(HttpMethod.GET, "/api/v1/login/microsoft"),
+                AntPathRequestMatcher.antMatcher(HttpMethod.GET, "/api/v1/login/microsoft/callback"));
+    }
+
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http, JwtKeyProvider keyProvider) throws Exception {
         http
@@ -62,11 +77,18 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                         .requestMatchers("/.well-known/jwks.json").permitAll()
                         .requestMatchers("/api/v1/build-info").permitAll()
-                        .requestMatchers("/api/v1/register", "/api/v1/signup", "/api/v1/login",
-                                "/api/v1/forgot-password", "/api/v1/reset-password",
-                                "/api/v1/login/microsoft", "/api/v1/login/microsoft/**",
-                                "/api/v1/oauth/token", "/api/v1/oauth/refresh",
-                                "/api/v1/api-keys/resolve").permitAll()
+                        .requestMatchers(
+                                AntPathRequestMatcher.antMatcher("/api/v1/register"),
+                                AntPathRequestMatcher.antMatcher("/api/v1/signup"),
+                                AntPathRequestMatcher.antMatcher("/api/v1/login"),
+                                AntPathRequestMatcher.antMatcher("/api/v1/forgot-password"),
+                                AntPathRequestMatcher.antMatcher("/api/v1/reset-password"),
+                                AntPathRequestMatcher.antMatcher("/api/v1/login/microsoft"),
+                                AntPathRequestMatcher.antMatcher("/api/v1/login/microsoft/**"),
+                                AntPathRequestMatcher.antMatcher("/api/v1/oauth/token"),
+                                AntPathRequestMatcher.antMatcher("/api/v1/oauth/refresh"),
+                                AntPathRequestMatcher.antMatcher("/api/v1/api-keys/resolve")
+                        ).permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(e -> e
                         .authenticationEntryPoint((request, response, authException) -> {
