@@ -121,46 +121,87 @@ public class MicrosoftAuthService {
 
         MicrosoftAuthState authState = authStates.findById(state)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid or expired state"));
-        authStates.delete(authState);
         if (authState.getExpiresAt().isBefore(Instant.now())) {
+            authStates.delete(authState);
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Login state expired — try again");
         }
 
-        Client client = authService.requireActiveClient(authState.getClientId());
-        var creds = providerConfigs.requireActiveCredentials(authState.getOrganizationId());
-        String callback = iamPublicBaseUrl.replaceAll("/$", "") + "/api/v1/login/microsoft/callback";
+        // Capture SPA return, then consume state (one-time) before calling Microsoft.
+        String spaReturn = authState.getRedirectUri();
+        String codeVerifier = authState.getCodeVerifier();
+        String nonce = authState.getNonce();
+        String clientId = authState.getClientId();
+        UUID organizationId = authState.getOrganizationId();
+        authStates.delete(authState);
 
-        JsonNode tokenJson = exchangeCode(creds, code, callback, authState.getCodeVerifier());
-        String idToken = text(tokenJson, "id_token");
-        if (idToken == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Microsoft did not return an id_token");
+        try {
+            Client client = authService.requireActiveClient(clientId);
+            var creds = providerConfigs.requireActiveCredentials(organizationId);
+            String callback = iamPublicBaseUrl.replaceAll("/$", "") + "/api/v1/login/microsoft/callback";
+
+            JsonNode tokenJson = exchangeCode(creds, code, callback, codeVerifier);
+            if (tokenJson != null && tokenJson.hasNonNull("error")) {
+                String desc = text(tokenJson, "error_description");
+                if (desc == null) desc = text(tokenJson, "error");
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                        "Microsoft token error: " + (desc != null ? desc : tokenJson.toString()));
+            }
+            String idToken = text(tokenJson, "id_token");
+            if (idToken == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Microsoft did not return an id_token");
+            }
+
+            Claims claims = validateIdToken(idToken, creds, nonce);
+            String oid = claim(claims, "oid");
+            if (oid == null) oid = claims.getSubject();
+            String email = firstNonBlank(claim(claims, "preferred_username"), claim(claims, "email"), claim(claims, "upn"));
+            String name = firstNonBlank(claim(claims, "name"), email != null ? email.split("@")[0] : "Microsoft User");
+            String entraTid = claim(claims, "tid");
+
+            if (email == null || email.isBlank()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Microsoft account did not provide an email claim");
+            }
+            email = email.trim().toLowerCase(Locale.ROOT);
+
+            User user = resolveOrCreateUser(organizationId, email, name, oid, entraTid, claims, tokenJson);
+
+            TokenResponse tokens = authService.issueSession(user, client, DeviceHints.empty());
+            UUID ticketId = storeTicket(tokens);
+
+            return UriComponentsBuilder
+                    .fromUriString(spaReturn)
+                    .queryParam("microsoft_login", ticketId.toString())
+                    .build()
+                    .encode()
+                    .toUriString();
+        } catch (ResponseStatusException e) {
+            throw new MicrosoftCallbackException(spaReturn, e);
+        } catch (RuntimeException e) {
+            throw new MicrosoftCallbackException(spaReturn,
+                    new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                            "Microsoft callback failed: " + e.getMessage(), e));
+        }
+    }
+
+    /** Wraps a callback failure with the original SPA redirect URI (for browser bounce-back). */
+    public static final class MicrosoftCallbackException extends RuntimeException {
+        private final String spaRedirectUri;
+        private final ResponseStatusException causeStatus;
+
+        public MicrosoftCallbackException(String spaRedirectUri, ResponseStatusException causeStatus) {
+            super(causeStatus.getReason(), causeStatus);
+            this.spaRedirectUri = spaRedirectUri;
+            this.causeStatus = causeStatus;
         }
 
-        Claims claims = validateIdToken(idToken, creds, authState.getNonce());
-        String oid = claim(claims, "oid");
-        if (oid == null) oid = claims.getSubject();
-        String email = firstNonBlank(claim(claims, "preferred_username"), claim(claims, "email"), claim(claims, "upn"));
-        String name = firstNonBlank(claim(claims, "name"), email != null ? email.split("@")[0] : "Microsoft User");
-        String entraTid = claim(claims, "tid");
-
-        if (email == null || email.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Microsoft account did not provide an email claim");
+        public String spaRedirectUri() {
+            return spaRedirectUri;
         }
-        email = email.trim().toLowerCase(Locale.ROOT);
 
-        User user = resolveOrCreateUser(
-                authState.getOrganizationId(), email, name, oid, entraTid, claims, tokenJson);
-
-        TokenResponse tokens = authService.issueSession(user, client, DeviceHints.empty());
-        UUID ticketId = storeTicket(tokens);
-
-        return UriComponentsBuilder
-                .fromUriString(authState.getRedirectUri())
-                .queryParam("microsoft_login", ticketId.toString())
-                .build()
-                .encode()
-                .toUriString();
+        public ResponseStatusException causeStatus() {
+            return causeStatus;
+        }
     }
 
     @Transactional
@@ -341,15 +382,25 @@ public class MicrosoftAuthService {
                 + "&redirect_uri=" + url(redirectUri)
                 + "&code_verifier=" + url(codeVerifier);
         try {
-            String response = http.post()
+            return http.post()
                     .uri(creds.authorityBase() + "/oauth2/v2.0/token")
                     .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                     .body(body)
-                    .retrieve()
-                    .body(String.class);
-            return objectMapper.readTree(response);
+                    .exchange((req, res) -> {
+                        String respBody = new String(res.getBody().readAllBytes(), StandardCharsets.UTF_8);
+                        if (res.getStatusCode().isError()) {
+                            String snippet = respBody.length() > 400 ? respBody.substring(0, 400) : respBody;
+                            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                                    "Microsoft token exchange failed: HTTP "
+                                            + res.getStatusCode().value() + " " + snippet);
+                        }
+                        return objectMapper.readTree(respBody);
+                    });
+        } catch (ResponseStatusException e) {
+            throw e;
         } catch (Exception e) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Microsoft token exchange failed: " + e.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "Microsoft token exchange failed: " + e.getMessage());
         }
     }
 
