@@ -7,12 +7,15 @@ import com.nyberg.iam.device.DeviceHints;
 import com.nyberg.iam.domain.*;
 import com.nyberg.iam.dto.TokenResponse;
 import com.nyberg.iam.repository.*;
+import com.nyberg.iam.events.UserAuthenticatedApplicationEvent;
+import com.nyberg.iam.events.UserLifecycleEvent;
 import com.nyberg.iam.service.AuthService;
 import com.nyberg.iam.service.RoleService;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -54,6 +57,7 @@ public class MicrosoftAuthService {
     private final PasswordEncoder passwordEncoder;
     private final CredentialEncryptionService encryption;
     private final ObjectMapper objectMapper;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     @Value("${iam.public-base-url:https://iam.byzantineapp.dev}")
     private String iamPublicBaseUrl;
@@ -168,6 +172,19 @@ public class MicrosoftAuthService {
 
             TokenResponse tokens = authService.issueSession(user, client, DeviceHints.empty());
             UUID ticketId = storeTicket(tokens);
+
+            // Provider-agnostic identity hint for directory (and future Google, etc.).
+            applicationEventPublisher.publishEvent(new UserAuthenticatedApplicationEvent(
+                    this,
+                    UserLifecycleEvent.userAuthenticated(
+                            user.getOrganizationId(),
+                            user.getTenantId(),
+                            user.getId(),
+                            email,
+                            name,
+                            UserLifecycleEvent.PROVIDER_MICROSOFT
+                    )
+            ));
 
             return UriComponentsBuilder
                     .fromUriString(spaReturn)
