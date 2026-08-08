@@ -6,6 +6,7 @@ import com.nyberg.iam.device.DeviceService;
 import com.nyberg.iam.domain.Device;
 import com.nyberg.iam.domain.*;
 import com.nyberg.iam.dto.*;
+import com.nyberg.iam.events.UserAuthenticatedApplicationEvent;
 import com.nyberg.iam.events.UserLifecycleEvent;
 import com.nyberg.iam.events.UserRegisteredApplicationEvent;
 import com.nyberg.iam.repository.*;
@@ -145,6 +146,19 @@ public class AuthService {
         if (!passwordEncoder.matches(req.password(), user.getPasswordHash())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
         }
+
+        // Kafka: directory profile fill + managed-api product tasks (workspace prompt, etc.).
+        applicationEventPublisher.publishEvent(new UserAuthenticatedApplicationEvent(
+                this,
+                UserLifecycleEvent.userAuthenticated(
+                        user.getOrganizationId(),
+                        user.getTenantId(),
+                        user.getId(),
+                        user.getEmail(),
+                        user.getName(),
+                        UserLifecycleEvent.PROVIDER_PASSWORD
+                )
+        ));
 
         return issueUserTokens(user, client, hints, TokenEventType.LOGIN);
     }
