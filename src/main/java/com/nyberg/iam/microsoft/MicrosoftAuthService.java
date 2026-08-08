@@ -113,9 +113,17 @@ public class MicrosoftAuthService {
     /**
      * Entra callback: exchange code, JIT/link user, mint Byz tokens into a one-time ticket,
      * redirect SPA to redirectUri?microsoft_login={ticketId}.
+     *
+     * @param deviceHints browser UA/IP from the callback request (user's browser redirected here)
      */
     @Transactional
-    public String handleCallback(String code, String state, String error, String errorDescription) {
+    public String handleCallback(
+            String code,
+            String state,
+            String error,
+            String errorDescription,
+            DeviceHints deviceHints
+    ) {
         if (error != null && !error.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Microsoft login failed: " + error + (errorDescription != null ? " — " + errorDescription : ""));
@@ -172,7 +180,10 @@ public class MicrosoftAuthService {
             ResolvedUser resolved = resolveOrCreateUser(organizationId, email, name, oid, entraTid, claims, tokenJson);
             User user = resolved.user();
 
-            TokenResponse tokens = authService.issueSession(user, client, DeviceHints.empty());
+            // Use callback request hints (user browser UA/IP). Empty hints collapse all MS
+            // sessions into one fingerprint and make revoke appear to "not delete" devices.
+            TokenResponse tokens = authService.issueSession(
+                    user, client, deviceHints != null ? deviceHints : DeviceHints.empty());
             UUID ticketId = storeTicket(tokens);
 
             // New account (password or federated) → notifications welcome in-app + email.

@@ -35,7 +35,10 @@ public class DeviceService {
 
     /**
      * Upsert device for this user+client from request hints. Returns the row to attach to the refresh token.
-     * Publishes {@code device.registered} when a new fingerprint is first seen.
+     * Publishes {@code device.registered} when a fingerprint is first seen <em>or</em> when a previously
+     * revoked device is used again (re-login after revoke).
+     * <p>
+     * Important: do not silently revive revoked devices without an event — that made revoke look like a no-op.
      */
     @Transactional
     public Device touch(User user, Client client, DeviceHints hints) {
@@ -48,6 +51,7 @@ public class DeviceService {
                 .orElse(null);
 
         boolean isNew = device == null;
+        boolean reactivated = device != null && device.isRevoked();
         if (isNew) {
             device = Device.builder()
                     .userId(user.getId())
@@ -62,6 +66,10 @@ public class DeviceService {
                     .revoked(false)
                     .build();
         } else {
+            // Only re-activate intentionally on a new login (touch); list API hides revoked rows until then.
+            if (reactivated) {
+                device.setFirstSeenAt(now);
+            }
             device.setLastSeenAt(now);
             device.setRevoked(false);
             if (h.userAgent() != null) {
@@ -78,7 +86,7 @@ public class DeviceService {
             }
         }
         device = deviceRepository.save(device);
-        if (isNew) {
+        if (isNew || reactivated) {
             publishDeviceRegistered(user, device);
         }
         return device;

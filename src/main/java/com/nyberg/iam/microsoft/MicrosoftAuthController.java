@@ -1,7 +1,9 @@
 package com.nyberg.iam.microsoft;
 
+import com.nyberg.iam.device.DeviceHintsFactory;
 import com.nyberg.iam.dto.TokenResponse;
 import com.nyberg.iam.microsoft.MicrosoftAuthService.MicrosoftCallbackException;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -44,10 +46,12 @@ public class MicrosoftAuthController {
             @RequestParam(required = false) String state,
             @RequestParam(required = false) String error,
             @RequestParam(required = false, name = "error_description") String errorDescription,
+            HttpServletRequest request,
             HttpServletResponse response
     ) throws IOException {
         try {
-            String redirect = microsoftAuth.handleCallback(code, state, error, errorDescription);
+            String redirect = microsoftAuth.handleCallback(
+                    code, state, error, errorDescription, DeviceHintsFactory.from(request));
             response.sendRedirect(redirect);
         } catch (MicrosoftCallbackException e) {
             log.warn("Microsoft callback failed: {}", e.causeStatus().getReason());
