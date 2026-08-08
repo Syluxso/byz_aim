@@ -266,6 +266,7 @@ public class AuthService {
     /** Used by federated login (Microsoft) after user is resolved. */
     @Transactional
     public TokenResponse issueSession(User user, Client client, DeviceHints hints) {
+        logEvent(TokenEventType.LOGIN, user.getOrganizationId(), user.getId(), client.getId());
         return issueUserTokens(user, client, hints);
     }
 
