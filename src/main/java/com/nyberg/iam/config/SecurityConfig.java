@@ -52,6 +52,16 @@ public class SecurityConfig {
             "http://127.0.0.1:8102"
     );
 
+    /**
+     * Managed product SPA hosts. Always merged so a host {@code CORS_ORIGINS} that only
+     * lists Admin cannot break Microsoft ticket exchange from byzantineapp.com.
+     */
+    private static final List<String> MANAGED_SPA_ORIGINS = List.of(
+            "https://byzantineapp.com",
+            "https://www.byzantineapp.com",
+            "https://app.byzantineapp.com"
+    );
+
     @Value("${CORS_ORIGINS:https://sys.byzantineapp.dev,https://admin.byzantineapp.dev,https://byzantineapp.com,https://www.byzantineapp.com,https://app.byzantineapp.com}")
     private String corsOrigins;
 
@@ -124,6 +134,7 @@ public class SecurityConfig {
                     .collect(Collectors.toList()));
         }
         origins.addAll(LOCAL_DEV_ORIGINS);
+        origins.addAll(MANAGED_SPA_ORIGINS);
         config.setAllowedOrigins(new ArrayList<>(origins));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
