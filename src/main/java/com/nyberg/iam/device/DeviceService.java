@@ -3,9 +3,14 @@ package com.nyberg.iam.device;
 import com.nyberg.iam.domain.Client;
 import com.nyberg.iam.domain.Device;
 import com.nyberg.iam.domain.User;
+import com.nyberg.iam.events.DeviceRegisteredApplicationEvent;
+import com.nyberg.iam.events.DeviceRevokedApplicationEvent;
+import com.nyberg.iam.events.UserLifecycleEvent;
 import com.nyberg.iam.repository.DeviceRepository;
 import com.nyberg.iam.repository.RefreshTokenRepository;
+import com.nyberg.iam.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,9 +30,12 @@ public class DeviceService {
 
     private final DeviceRepository deviceRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final UserRepository userRepository;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     /**
      * Upsert device for this user+client from request hints. Returns the row to attach to the refresh token.
+     * Publishes {@code device.registered} when a new fingerprint is first seen.
      */
     @Transactional
     public Device touch(User user, Client client, DeviceHints hints) {
@@ -39,7 +47,8 @@ public class DeviceService {
                 .findByUserIdAndClientIdAndFingerprint(user.getId(), client.getId(), fingerprint)
                 .orElse(null);
 
-        if (device == null) {
+        boolean isNew = device == null;
+        if (isNew) {
             device = Device.builder()
                     .userId(user.getId())
                     .clientId(client.getId())
@@ -68,7 +77,27 @@ public class DeviceService {
                 device.setClientDeviceId(truncate(h.clientDeviceId(), 128));
             }
         }
-        return deviceRepository.save(device);
+        device = deviceRepository.save(device);
+        if (isNew) {
+            publishDeviceRegistered(user, device);
+        }
+        return device;
+    }
+
+    private void publishDeviceRegistered(User user, Device device) {
+        applicationEventPublisher.publishEvent(new DeviceRegisteredApplicationEvent(
+                this,
+                UserLifecycleEvent.deviceRegistered(
+                        user.getOrganizationId(),
+                        user.getTenantId(),
+                        user.getId(),
+                        user.getEmail(),
+                        user.getName(),
+                        device.getId(),
+                        device.getLabel(),
+                        device.getIpAddress()
+                )
+        ));
     }
 
     @Transactional(readOnly = true)
@@ -78,15 +107,38 @@ public class DeviceService {
                 .toList();
     }
 
-    /** Revoke device and all its refresh tokens. */
+    /** Revoke device and all its refresh tokens. Publishes {@code device.revoked}. */
     @Transactional
     public void revoke(UUID userId, UUID deviceId) {
         Device device = deviceRepository.findByIdAndUserId(deviceId, userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found"));
+        if (device.isRevoked()) {
+            return;
+        }
         device.setRevoked(true);
         device.setLastSeenAt(Instant.now());
         deviceRepository.save(device);
         refreshTokenRepository.revokeAllByDeviceId(deviceId);
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        publishDeviceRevoked(user, device);
+    }
+
+    private void publishDeviceRevoked(User user, Device device) {
+        applicationEventPublisher.publishEvent(new DeviceRevokedApplicationEvent(
+                this,
+                UserLifecycleEvent.deviceRevoked(
+                        user.getOrganizationId(),
+                        user.getTenantId(),
+                        user.getId(),
+                        user.getEmail(),
+                        user.getName(),
+                        device.getId(),
+                        device.getLabel(),
+                        device.getIpAddress()
+                )
+        ));
     }
 
     static String fingerprint(UUID userId, UUID clientId, DeviceHints h) {

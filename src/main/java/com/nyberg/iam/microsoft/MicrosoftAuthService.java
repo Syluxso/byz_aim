@@ -9,6 +9,7 @@ import com.nyberg.iam.dto.TokenResponse;
 import com.nyberg.iam.repository.*;
 import com.nyberg.iam.events.UserAuthenticatedApplicationEvent;
 import com.nyberg.iam.events.UserLifecycleEvent;
+import com.nyberg.iam.events.UserRegisteredApplicationEvent;
 import com.nyberg.iam.service.AuthService;
 import com.nyberg.iam.service.RoleService;
 import io.jsonwebtoken.Claims;
@@ -168,12 +169,28 @@ public class MicrosoftAuthService {
             }
             email = email.trim().toLowerCase(Locale.ROOT);
 
-            User user = resolveOrCreateUser(organizationId, email, name, oid, entraTid, claims, tokenJson);
+            ResolvedUser resolved = resolveOrCreateUser(organizationId, email, name, oid, entraTid, claims, tokenJson);
+            User user = resolved.user();
 
             TokenResponse tokens = authService.issueSession(user, client, DeviceHints.empty());
             UUID ticketId = storeTicket(tokens);
 
-            // Provider-agnostic identity hint for directory (and future Google, etc.).
+            // New account (password or federated) → notifications welcome in-app + email.
+            if (resolved.created()) {
+                applicationEventPublisher.publishEvent(new UserRegisteredApplicationEvent(
+                        this,
+                        UserLifecycleEvent.userRegistered(
+                                user.getOrganizationId(),
+                                user.getTenantId(),
+                                user.getId(),
+                                email,
+                                name,
+                                UserLifecycleEvent.PROVIDER_MICROSOFT
+                        )
+                ));
+            }
+
+            // Every successful login → profile sync + product rules (managed-api, etc.).
             applicationEventPublisher.publishEvent(new UserAuthenticatedApplicationEvent(
                     this,
                     UserLifecycleEvent.userAuthenticated(
@@ -200,6 +217,8 @@ public class MicrosoftAuthService {
                             "Microsoft callback failed: " + e.getMessage(), e));
         }
     }
+
+    private record ResolvedUser(User user, boolean created) {}
 
     /** Wraps a callback failure with the original SPA redirect URI (for browser bounce-back). */
     public static final class MicrosoftCallbackException extends RuntimeException {
@@ -248,7 +267,7 @@ public class MicrosoftAuthService {
         }
     }
 
-    private User resolveOrCreateUser(
+    private ResolvedUser resolveOrCreateUser(
             UUID organizationId,
             String email,
             String name,
@@ -268,10 +287,11 @@ public class MicrosoftAuthService {
                 user.setTenantId(byzTenantId);
                 users.save(user);
             }
-            return user;
+            return new ResolvedUser(user, false);
         }
 
         User user = users.findByOrganizationIdAndEmailIgnoreCase(organizationId, email).orElse(null);
+        boolean created = false;
         if (user == null) {
             user = User.builder()
                     .organizationId(organizationId)
@@ -283,6 +303,7 @@ public class MicrosoftAuthService {
                     .build();
             users.save(user);
             roleService.assignDefaultsForNewUser(user);
+            created = true;
         } else if (byzTenantId != null && user.getTenantId() == null) {
             user.setTenantId(byzTenantId);
             users.save(user);
@@ -298,7 +319,7 @@ public class MicrosoftAuthService {
                 .build();
         updateExternal(identity, email, entraTid, claims, tokenJson);
         externalIdentities.save(identity);
-        return user;
+        return new ResolvedUser(user, created);
     }
 
     private UUID ensureByzTenantForEntra(UUID organizationId, String entraTid, Claims claims) {
