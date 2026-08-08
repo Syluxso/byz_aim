@@ -273,7 +273,10 @@ public class AuthService {
     }
 
     private TokenResponse issueUserTokens(User user, Client client, DeviceHints hints, TokenEventType authEvent) {
-        var device = deviceService.touch(user, client, hints != null ? hints : DeviceHints.empty());
+        // sessionStart on login/register only — resets first_seen after revoke without
+        // treating every token refresh as a new device.
+        var device = deviceService.touch(
+                user, client, hints != null ? hints : DeviceHints.empty(), authEvent != null);
         if (authEvent != null) {
             logEvent(authEvent, user.getOrganizationId(), user.getId(), client.getId(), device);
         }

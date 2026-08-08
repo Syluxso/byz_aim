@@ -38,9 +38,11 @@ public class DeviceService {
      * <p>
      * Revoked devices are never revived. Empty UA/IP-less "Unknown device" rows are not
      * recreated when a real browser session already exists (token refresh often lacks UA).
+     *
+     * @param sessionStart true for login/register (may reset first_seen); false for refresh
      */
     @Transactional
-    public Device touch(User user, Client client, DeviceHints hints) {
+    public Device touch(User user, Client client, DeviceHints hints, boolean sessionStart) {
         DeviceHints h = hints != null ? hints : DeviceHints.empty();
         Instant now = Instant.now();
 
@@ -72,6 +74,15 @@ public class DeviceService {
                 .orElse(null);
 
         boolean isNew = device == null;
+        // Login/register only: active catalog row with no live refresh tokens = re-login after
+        // revoke (or device never got marked revoked). Reset first_seen for this session.
+        // Do NOT do this on refresh — refresh revokes the old token first, so it would always
+        // look like a new session.
+        boolean newSession = isNew
+                || (sessionStart
+                && device != null
+                && !refreshTokenRepository.existsByDeviceIdAndRevokedFalse(device.getId()));
+
         if (isNew) {
             device = Device.builder()
                     .userId(user.getId())
@@ -86,6 +97,9 @@ public class DeviceService {
                     .revoked(false)
                     .build();
         } else {
+            if (newSession) {
+                device.setFirstSeenAt(now);
+            }
             device.setLastSeenAt(now);
             if (h.userAgent() != null) {
                 device.setUserAgent(truncate(h.userAgent(), 2000));
@@ -101,7 +115,7 @@ public class DeviceService {
             }
         }
         device = deviceRepository.save(device);
-        if (isNew) {
+        if (newSession) {
             publishDeviceRegistered(user, device);
         }
         return device;

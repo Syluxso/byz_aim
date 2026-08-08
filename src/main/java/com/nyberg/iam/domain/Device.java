@@ -40,7 +40,12 @@ public class Device {
     @Column(name = "client_device_id", length = 128)
     private String clientDeviceId;
 
-    @Column(name = "first_seen_at", nullable = false, updatable = false)
+    /**
+     * Start of the current session for this device row. Reset when a login creates a new
+     * session after the previous refresh tokens were revoked (or the device was soft-deleted
+     * and a new row is inserted).
+     */
+    @Column(name = "first_seen_at", nullable = false)
     private Instant firstSeenAt;
 
     @Column(name = "last_seen_at", nullable = false)
