@@ -34,11 +34,11 @@ public class DeviceService {
     private final ApplicationEventPublisher applicationEventPublisher;
 
     /**
-     * Upsert device for this user+client from request hints. Returns the row to attach to the refresh token.
-     * Publishes {@code device.registered} when a fingerprint is first seen <em>or</em> when a previously
-     * revoked device is used again (re-login after revoke).
+     * Upsert <em>active</em> device for this user+client from request hints.
      * <p>
-     * Important: do not silently revive revoked devices without an event — that made revoke look like a no-op.
+     * Revoked devices are never revived. After revoke, the next login with the same
+     * browser fingerprint inserts a <strong>new</strong> row (soft-delete + partial unique
+     * index on active fingerprints only) and emits {@code device.registered}.
      */
     @Transactional
     public Device touch(User user, Client client, DeviceHints hints) {
@@ -47,12 +47,16 @@ public class DeviceService {
         Instant now = Instant.now();
 
         Device device = deviceRepository
-                .findByUserIdAndClientIdAndFingerprint(user.getId(), client.getId(), fingerprint)
+                .findByUserIdAndClientIdAndFingerprintAndRevokedFalse(
+                        user.getId(), client.getId(), fingerprint)
                 .orElse(null);
 
         boolean isNew = device == null;
-        boolean reactivated = device != null && device.isRevoked();
         if (isNew) {
+            // Drop legacy "Unknown device" rows from Microsoft logins that used empty UA hints
+            // (same client, empty fingerprint) so users don't see two devices for one browser.
+            retireLegacyEmptyFingerprint(user, client, fingerprint);
+
             device = Device.builder()
                     .userId(user.getId())
                     .clientId(client.getId())
@@ -66,12 +70,7 @@ public class DeviceService {
                     .revoked(false)
                     .build();
         } else {
-            // Only re-activate intentionally on a new login (touch); list API hides revoked rows until then.
-            if (reactivated) {
-                device.setFirstSeenAt(now);
-            }
             device.setLastSeenAt(now);
-            device.setRevoked(false);
             if (h.userAgent() != null) {
                 device.setUserAgent(truncate(h.userAgent(), 2000));
             }
@@ -86,10 +85,30 @@ public class DeviceService {
             }
         }
         device = deviceRepository.save(device);
-        if (isNew || reactivated) {
+        if (isNew) {
             publishDeviceRegistered(user, device);
         }
         return device;
+    }
+
+    /**
+     * Soft-delete active empty-UA devices for this user+client when a real-UA device is created.
+     * No Kafka event (cleanup of a known historical bug, not a user-initiated revoke).
+     */
+    private void retireLegacyEmptyFingerprint(User user, Client client, String newFingerprint) {
+        String emptyFp = fingerprint(user.getId(), client.getId(), DeviceHints.empty());
+        if (emptyFp.equals(newFingerprint)) {
+            return;
+        }
+        deviceRepository
+                .findByUserIdAndClientIdAndFingerprintAndRevokedFalse(
+                        user.getId(), client.getId(), emptyFp)
+                .ifPresent(ghost -> {
+                    ghost.setRevoked(true);
+                    ghost.setLastSeenAt(Instant.now());
+                    deviceRepository.save(ghost);
+                    refreshTokenRepository.revokeAllByDeviceId(ghost.getId());
+                });
     }
 
     private void publishDeviceRegistered(User user, Device device) {
@@ -115,7 +134,10 @@ public class DeviceService {
                 .toList();
     }
 
-    /** Revoke device and all its refresh tokens. Publishes {@code device.revoked}. */
+    /**
+     * Soft-delete: mark revoked, kill refresh tokens, publish {@code device.revoked}.
+     * The row stays for audit; it will never be returned by list or re-activated by {@link #touch}.
+     */
     @Transactional
     public void revoke(UUID userId, UUID deviceId) {
         Device device = deviceRepository.findByIdAndUserId(deviceId, userId)

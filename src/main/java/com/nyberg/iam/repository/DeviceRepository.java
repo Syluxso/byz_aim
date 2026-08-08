@@ -9,7 +9,9 @@ import java.util.UUID;
 
 public interface DeviceRepository extends JpaRepository<Device, UUID> {
 
-    Optional<Device> findByUserIdAndClientIdAndFingerprint(UUID userId, UUID clientId, String fingerprint);
+    /** Active (non-revoked) device for this fingerprint — revoked rows are never matched. */
+    Optional<Device> findByUserIdAndClientIdAndFingerprintAndRevokedFalse(
+            UUID userId, UUID clientId, String fingerprint);
 
     List<Device> findByUserIdAndRevokedFalseOrderByLastSeenAtDesc(UUID userId);
 
