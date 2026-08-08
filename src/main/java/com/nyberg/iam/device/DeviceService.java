@@ -36,16 +36,36 @@ public class DeviceService {
     /**
      * Upsert <em>active</em> device for this user+client from request hints.
      * <p>
-     * Revoked devices are never revived. After revoke, the next login with the same
-     * browser fingerprint inserts a <strong>new</strong> row (soft-delete + partial unique
-     * index on active fingerprints only) and emits {@code device.registered}.
+     * Revoked devices are never revived. Empty UA/IP-less "Unknown device" rows are not
+     * recreated when a real browser session already exists (token refresh often lacks UA).
      */
     @Transactional
     public Device touch(User user, Client client, DeviceHints hints) {
         DeviceHints h = hints != null ? hints : DeviceHints.empty();
-        String fingerprint = fingerprint(user.getId(), client.getId(), h);
         Instant now = Instant.now();
 
+        // Always scrub empty-fingerprint ghosts when we have real browser metadata.
+        if (hasIdentity(h)) {
+            retireLegacyEmptyFingerprint(user, client);
+        }
+
+        // Token refresh / some federated paths hit us with no UA. Do not spawn "Unknown device"
+        // if the user already has an active browser session for this client.
+        if (!hasIdentity(h)) {
+            Device existing = deviceRepository
+                    .findFirstByUserIdAndClientIdAndRevokedFalseOrderByLastSeenAtDesc(
+                            user.getId(), client.getId())
+                    .orElse(null);
+            if (existing != null) {
+                if (h.ipAddress() != null) {
+                    existing.setIpAddress(truncate(h.ipAddress(), 64));
+                }
+                existing.setLastSeenAt(now);
+                return deviceRepository.save(existing);
+            }
+        }
+
+        String fingerprint = fingerprint(user.getId(), client.getId(), h);
         Device device = deviceRepository
                 .findByUserIdAndClientIdAndFingerprintAndRevokedFalse(
                         user.getId(), client.getId(), fingerprint)
@@ -53,10 +73,6 @@ public class DeviceService {
 
         boolean isNew = device == null;
         if (isNew) {
-            // Drop legacy "Unknown device" rows from Microsoft logins that used empty UA hints
-            // (same client, empty fingerprint) so users don't see two devices for one browser.
-            retireLegacyEmptyFingerprint(user, client, fingerprint);
-
             device = Device.builder()
                     .userId(user.getId())
                     .clientId(client.getId())
@@ -91,15 +107,18 @@ public class DeviceService {
         return device;
     }
 
+    /** True if hints can distinguish a real client (not the empty fingerprint trap). */
+    private static boolean hasIdentity(DeviceHints h) {
+        return (h.clientDeviceId() != null && !h.clientDeviceId().isBlank())
+                || (h.userAgent() != null && !h.userAgent().isBlank());
+    }
+
     /**
-     * Soft-delete active empty-UA devices for this user+client when a real-UA device is created.
-     * No Kafka event (cleanup of a known historical bug, not a user-initiated revoke).
+     * Soft-delete active empty-UA devices for this user+client.
+     * No Kafka event (cleanup of a known historical bug / refresh side-effect).
      */
-    private void retireLegacyEmptyFingerprint(User user, Client client, String newFingerprint) {
+    private void retireLegacyEmptyFingerprint(User user, Client client) {
         String emptyFp = fingerprint(user.getId(), client.getId(), DeviceHints.empty());
-        if (emptyFp.equals(newFingerprint)) {
-            return;
-        }
         deviceRepository
                 .findByUserIdAndClientIdAndFingerprintAndRevokedFalse(
                         user.getId(), client.getId(), emptyFp)
@@ -173,7 +192,7 @@ public class DeviceService {
 
     static String fingerprint(UUID userId, UUID clientId, DeviceHints h) {
         String material;
-        if (h.clientDeviceId() != null) {
+        if (h.clientDeviceId() != null && !h.clientDeviceId().isBlank()) {
             material = userId + "|" + clientId + "|id|" + h.clientDeviceId();
         } else {
             String ua = h.userAgent() != null ? h.userAgent() : "";
@@ -183,7 +202,7 @@ public class DeviceService {
     }
 
     private static String label(DeviceHints h) {
-        if (h.deviceName() != null) {
+        if (h.deviceName() != null && !h.deviceName().isBlank()) {
             return truncate(h.deviceName(), 255);
         }
         String ua = h.userAgent();

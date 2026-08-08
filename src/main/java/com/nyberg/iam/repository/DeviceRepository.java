@@ -15,5 +15,9 @@ public interface DeviceRepository extends JpaRepository<Device, UUID> {
 
     List<Device> findByUserIdAndRevokedFalseOrderByLastSeenAtDesc(UUID userId);
 
+    /** Most recently active device for this user+client (any fingerprint). */
+    Optional<Device> findFirstByUserIdAndClientIdAndRevokedFalseOrderByLastSeenAtDesc(
+            UUID userId, UUID clientId);
+
     Optional<Device> findByIdAndUserId(UUID id, UUID userId);
 }
