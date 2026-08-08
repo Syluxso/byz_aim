@@ -3,6 +3,7 @@ package com.nyberg.iam.service;
 import com.nyberg.iam.config.JwtService;
 import com.nyberg.iam.device.DeviceHints;
 import com.nyberg.iam.device.DeviceService;
+import com.nyberg.iam.domain.Device;
 import com.nyberg.iam.domain.*;
 import com.nyberg.iam.dto.*;
 import com.nyberg.iam.events.UserLifecycleEvent;
@@ -79,9 +80,8 @@ public class AuthService {
         userRepository.save(user);
 
         roleService.assignDefaultsForNewUser(user);
-        logEvent(TokenEventType.REGISTER, client.getOrganizationId(), user.getId(), client.getId());
         publishUserRegistered(user);
-        return issueUserTokens(user, client, hints);
+        return issueUserTokens(user, client, hints, TokenEventType.REGISTER);
     }
 
     /**
@@ -131,9 +131,8 @@ public class AuthService {
         userRepository.save(user);
 
         roleService.assignDefaultsForNewUser(user);
-        logEvent(TokenEventType.REGISTER, orgId, user.getId(), client.getId());
         publishUserRegistered(user);
-        return issueUserTokens(user, client, hints);
+        return issueUserTokens(user, client, hints, TokenEventType.REGISTER);
     }
 
     @Transactional
@@ -147,8 +146,7 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
         }
 
-        logEvent(TokenEventType.LOGIN, client.getOrganizationId(), user.getId(), client.getId());
-        return issueUserTokens(user, client, hints);
+        return issueUserTokens(user, client, hints, TokenEventType.LOGIN);
     }
 
     @Transactional
@@ -169,8 +167,9 @@ public class AuthService {
         stored.setRevoked(true);
         refreshTokenRepository.save(stored);
 
-        logEvent(TokenEventType.REFRESH, client.getOrganizationId(), user.getId(), client.getId());
-        return issueUserTokens(user, client, hints);
+        // REFRESH is not shown on the security history page; still log without auth label noise.
+        logEvent(TokenEventType.REFRESH, client.getOrganizationId(), user.getId(), client.getId(), null);
+        return issueUserTokens(user, client, hints, null);
     }
 
     @Transactional
@@ -192,7 +191,7 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Grant type not allowed for client");
         }
 
-        logEvent(TokenEventType.CLIENT_CREDENTIALS, client.getOrganizationId(), null, client.getId());
+        logEvent(TokenEventType.CLIENT_CREDENTIALS, client.getOrganizationId(), null, client.getId(), null);
         String accessToken = jwtService.createServiceToken(
                 client.getClientId(), client.getOrganizationId(), client.getTenantId(), "byz-api");
         return TokenResponse.accessOnly(accessToken, jwtService.accessTokenTtlSeconds());
@@ -209,7 +208,7 @@ public class AuthService {
         }
         Client client = authenticateConfidentialClient(req);
 
-        logEvent(TokenEventType.SUBJECT, client.getOrganizationId(), null, client.getId());
+        logEvent(TokenEventType.SUBJECT, client.getOrganizationId(), null, client.getId(), null);
         String accessToken = jwtService.createSubjectToken(
                 req.subject(),
                 client.getOrganizationId(),
@@ -266,16 +265,18 @@ public class AuthService {
     /** Used by federated login (Microsoft) after user is resolved. */
     @Transactional
     public TokenResponse issueSession(User user, Client client, DeviceHints hints) {
-        logEvent(TokenEventType.LOGIN, user.getOrganizationId(), user.getId(), client.getId());
-        return issueUserTokens(user, client, hints);
+        return issueUserTokens(user, client, hints, TokenEventType.LOGIN);
     }
 
     public Client requireActiveClient(String clientId) {
         return resolveClient(clientId);
     }
 
-    private TokenResponse issueUserTokens(User user, Client client, DeviceHints hints) {
+    private TokenResponse issueUserTokens(User user, Client client, DeviceHints hints, TokenEventType authEvent) {
         var device = deviceService.touch(user, client, hints != null ? hints : DeviceHints.empty());
+        if (authEvent != null) {
+            logEvent(authEvent, user.getOrganizationId(), user.getId(), client.getId(), device);
+        }
         roleService.ensureOrgMemberIfMissing(user);
         List<String> roles = roleService.claimsForToken(user.getId(), user.getOrganizationId(), user.getTenantId());
         String accessToken = jwtService.createUserToken(
@@ -312,12 +313,21 @@ public class AuthService {
         return client;
     }
 
-    private void logEvent(TokenEventType type, UUID organizationId, UUID userId, UUID clientId) {
+    private void logEvent(
+            TokenEventType type,
+            UUID organizationId,
+            UUID userId,
+            UUID clientId,
+            Device device
+    ) {
         tokenEventRepository.save(TokenEvent.builder()
                 .eventType(type)
                 .organizationId(organizationId)
                 .userId(userId)
                 .clientId(clientId)
+                .deviceId(device != null ? device.getId() : null)
+                .deviceLabel(device != null ? device.getLabel() : null)
+                .deviceIp(device != null ? device.getIpAddress() : null)
                 .build());
     }
 

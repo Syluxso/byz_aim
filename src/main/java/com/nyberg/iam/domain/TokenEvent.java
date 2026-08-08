@@ -32,6 +32,17 @@ public class TokenEvent {
     @Column(name = "client_id")
     private UUID clientId;
 
+    /** Optional link to device catalog; may be null for non-session events. */
+    @Column(name = "device_id")
+    private UUID deviceId;
+
+    /** Snapshot at event time (device may later be soft-deleted). */
+    @Column(name = "device_label")
+    private String deviceLabel;
+
+    @Column(name = "device_ip", length = 64)
+    private String deviceIp;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 

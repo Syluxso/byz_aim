@@ -47,14 +47,20 @@ public class MeAuthEventsController {
             UUID id,
             String type,
             Instant createdAt,
-            UUID clientId
+            UUID clientId,
+            UUID deviceId,
+            String deviceLabel,
+            String deviceIp
     ) {
         static AuthEventResponse from(TokenEvent e) {
             return new AuthEventResponse(
                     e.getId(),
                     e.getEventType() != null ? e.getEventType().name() : "UNKNOWN",
                     e.getCreatedAt(),
-                    e.getClientId()
+                    e.getClientId(),
+                    e.getDeviceId(),
+                    e.getDeviceLabel(),
+                    e.getDeviceIp()
             );
         }
     }
