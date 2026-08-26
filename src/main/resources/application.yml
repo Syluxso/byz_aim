@@ -38,6 +38,9 @@ byz:
 
 iam:
   issuer: ${IAM_ISSUER:https://iam.byzantineapp.dev}
+  # Comma-separated host=issuerURL pairs. Tokens minted for a request whose
+  # X-Forwarded-Host matches a key use that entry's URL as the iss claim.
+  # Example: IAM_DOMAIN_ISSUERS=auth.cardwallah.com=https://auth.cardwallah.com
   access-token-ttl-seconds: ${ACCESS_TOKEN_TTL:3600}
   subject-token-ttl-seconds: ${SUBJECT_TOKEN_TTL:900}
   refresh-token-ttl-seconds: ${REFRESH_TOKEN_TTL:2592000}

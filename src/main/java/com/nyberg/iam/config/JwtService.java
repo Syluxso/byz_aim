@@ -1,11 +1,16 @@
 package com.nyberg.iam.config;
 
 import io.jsonwebtoken.Jwts;
+import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.web.context.request.RequestAttributes;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.time.Instant;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -17,6 +22,46 @@ public class JwtService {
 
     @Value("${iam.issuer}")
     private String issuer;
+
+    /**
+     * Comma-separated host=issuerURL pairs.
+     * When a request arrives whose X-Forwarded-Host matches a key, tokens are minted
+     * with that entry's URL as the iss claim instead of the default.
+     * Example: IAM_DOMAIN_ISSUERS=auth.cardwallah.com=https://auth.cardwallah.com
+     */
+    @Value("${IAM_DOMAIN_ISSUERS:}")
+    private String domainIssuersRaw;
+
+    private Map<String, String> domainIssuers = new HashMap<>();
+
+    @PostConstruct
+    private void initDomainIssuers() {
+        if (domainIssuersRaw == null || domainIssuersRaw.isBlank()) return;
+        for (String entry : domainIssuersRaw.split(",")) {
+            int eq = entry.indexOf('=');
+            if (eq > 0) {
+                domainIssuers.put(entry.substring(0, eq).trim(), entry.substring(eq + 1).trim());
+            }
+        }
+    }
+
+    /**
+     * Returns the issuer to embed in a token, selecting a domain-specific override
+     * when the current request was forwarded through a custom hostname.
+     */
+    private String resolveIssuer() {
+        if (domainIssuers.isEmpty()) return issuer;
+        RequestAttributes attrs = RequestContextHolder.getRequestAttributes();
+        if (attrs instanceof ServletRequestAttributes sra) {
+            String forwarded = sra.getRequest().getHeader("X-Forwarded-Host");
+            if (forwarded != null && !forwarded.isBlank()) {
+                String host = forwarded.split(",")[0].trim();
+                String override = domainIssuers.get(host);
+                if (override != null) return override;
+            }
+        }
+        return issuer;
+    }
 
     @Value("${iam.access-token-ttl-seconds}")
     private long accessTokenTtlSeconds;
@@ -40,7 +85,7 @@ public class JwtService {
         Instant now = Instant.now();
         var builder = Jwts.builder()
                 .header().keyId(keyProvider.keyId()).and()
-                .issuer(issuer)
+                .issuer(resolveIssuer())
                 .subject(userId.toString())
                 .audience().add(audience).and()
                 .issuedAt(Date.from(now))
@@ -64,7 +109,7 @@ public class JwtService {
         Instant now = Instant.now();
         var builder = Jwts.builder()
                 .header().keyId(keyProvider.keyId()).and()
-                .issuer(issuer)
+                .issuer(resolveIssuer())
                 .subject(clientId)
                 .audience().add(audience).and()
                 .issuedAt(Date.from(now))
@@ -82,7 +127,7 @@ public class JwtService {
         Instant now = Instant.now();
         var builder = Jwts.builder()
                 .header().keyId(keyProvider.keyId()).and()
-                .issuer(issuer)
+                .issuer(resolveIssuer())
                 .subject(subject.toString())
                 .audience().add(audience).and()
                 .issuedAt(Date.from(now))
@@ -109,7 +154,7 @@ public class JwtService {
         Instant now = Instant.now();
         var builder = Jwts.builder()
                 .header().keyId(keyProvider.keyId()).and()
-                .issuer(issuer)
+                .issuer(resolveIssuer())
                 .audience().add(audience).and()
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plusSeconds(accessTokenTtlSeconds)))
