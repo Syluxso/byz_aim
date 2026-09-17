@@ -7,7 +7,6 @@ import com.nyberg.iam.device.DeviceHints;
 import com.nyberg.iam.domain.*;
 import com.nyberg.iam.dto.TokenResponse;
 import com.nyberg.iam.repository.*;
-import com.nyberg.iam.events.UserAuthenticatedApplicationEvent;
 import com.nyberg.iam.events.UserLifecycleEvent;
 import com.nyberg.iam.events.UserRegisteredApplicationEvent;
 import com.nyberg.iam.service.AuthService;
@@ -200,19 +199,6 @@ public class MicrosoftAuthService {
                         )
                 ));
             }
-
-            // Every successful login → profile sync + product rules (managed-api, etc.).
-            applicationEventPublisher.publishEvent(new UserAuthenticatedApplicationEvent(
-                    this,
-                    UserLifecycleEvent.userAuthenticated(
-                            user.getOrganizationId(),
-                            user.getTenantId(),
-                            user.getId(),
-                            email,
-                            name,
-                            UserLifecycleEvent.PROVIDER_MICROSOFT
-                    )
-            ));
 
             return UriComponentsBuilder
                     .fromUriString(spaReturn)

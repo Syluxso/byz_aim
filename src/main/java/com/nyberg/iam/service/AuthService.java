@@ -119,7 +119,9 @@ public class AuthService {
             tenantId = tenant.getId();
         }
 
-        String name = displayName(req.firstName(), req.lastName(), email);
+        String first = blankToNull(req.firstName());
+        String last = blankToNull(req.lastName());
+        String name = displayName(first, last, email);
 
         User user = User.builder()
                 .organizationId(orgId)
@@ -127,6 +129,8 @@ public class AuthService {
                 .email(email)
                 .passwordHash(passwordEncoder.encode(req.password()))
                 .name(name)
+                .firstName(first)
+                .lastName(last)
                 .active(true)
                 .build();
         userRepository.save(user);
@@ -147,20 +151,8 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
         }
 
-        // Kafka: directory profile fill + managed-api product tasks (workspace prompt, etc.).
-        applicationEventPublisher.publishEvent(new UserAuthenticatedApplicationEvent(
-                this,
-                UserLifecycleEvent.userAuthenticated(
-                        user.getOrganizationId(),
-                        user.getTenantId(),
-                        user.getId(),
-                        user.getEmail(),
-                        user.getName(),
-                        UserLifecycleEvent.PROVIDER_PASSWORD
-                )
-        ));
-
-        return issueUserTokens(user, client, hints, TokenEventType.LOGIN);
+        return issueUserTokens(
+                user, client, hints, TokenEventType.LOGIN, UserLifecycleEvent.PROVIDER_PASSWORD);
     }
 
     @Transactional
@@ -256,6 +248,14 @@ public class AuthService {
         return combined.isBlank() ? defaultNameFromEmail(email) : combined;
     }
 
+    private static String blankToNull(String s) {
+        if (s == null) {
+            return null;
+        }
+        String t = s.trim();
+        return t.isEmpty() ? null : t;
+    }
+
     private static String slugify(String input) {
         return input.trim().toLowerCase()
                 .replaceAll("[^a-z0-9]+", "-")
@@ -279,7 +279,8 @@ public class AuthService {
     /** Used by federated login (Microsoft) after user is resolved. */
     @Transactional
     public TokenResponse issueSession(User user, Client client, DeviceHints hints) {
-        return issueUserTokens(user, client, hints, TokenEventType.LOGIN);
+        return issueUserTokens(
+                user, client, hints, TokenEventType.LOGIN, UserLifecycleEvent.PROVIDER_MICROSOFT);
     }
 
     public Client requireActiveClient(String clientId) {
@@ -287,12 +288,39 @@ public class AuthService {
     }
 
     private TokenResponse issueUserTokens(User user, Client client, DeviceHints hints, TokenEventType authEvent) {
+        return issueUserTokens(user, client, hints, authEvent, null);
+    }
+
+    private TokenResponse issueUserTokens(
+            User user,
+            Client client,
+            DeviceHints hints,
+            TokenEventType authEvent,
+            String provider
+    ) {
         // sessionStart on login/register only — resets first_seen after revoke without
         // treating every token refresh as a new device.
         var device = deviceService.touch(
                 user, client, hints != null ? hints : DeviceHints.empty(), authEvent != null);
         if (authEvent != null) {
             logEvent(authEvent, user.getOrganizationId(), user.getId(), client.getId(), device);
+        }
+        if (authEvent == TokenEventType.LOGIN) {
+            String hint = provider != null ? provider : UserLifecycleEvent.PROVIDER_PASSWORD;
+            applicationEventPublisher.publishEvent(new UserAuthenticatedApplicationEvent(
+                    this,
+                    UserLifecycleEvent.userAuthenticated(
+                            user.getOrganizationId(),
+                            user.getTenantId(),
+                            user.getId(),
+                            user.getEmail(),
+                            user.getName(),
+                            hint,
+                            device.getId(),
+                            device.getLabel(),
+                            device.getIpAddress()
+                    )
+            ));
         }
         roleService.ensureOrgMemberIfMissing(user);
         List<String> roles = roleService.claimsForToken(user.getId(), user.getOrganizationId(), user.getTenantId());

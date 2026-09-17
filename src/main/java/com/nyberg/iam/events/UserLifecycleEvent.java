@@ -117,6 +117,21 @@ public record UserLifecycleEvent(
             String displayName,
             String provider
     ) {
+        return userAuthenticated(
+                organizationId, tenantId, userId, email, displayName, provider, null, null, null);
+    }
+
+    public static UserLifecycleEvent userAuthenticated(
+            UUID organizationId,
+            UUID tenantId,
+            UUID userId,
+            String email,
+            String displayName,
+            String provider,
+            UUID deviceId,
+            String deviceLabel,
+            String deviceIp
+    ) {
         return new UserLifecycleEvent(
                 UUID.randomUUID(),
                 TYPE_USER_AUTHENTICATED,
@@ -128,9 +143,9 @@ public record UserLifecycleEvent(
                 displayName,
                 null,
                 provider,
-                null,
-                null,
-                null
+                deviceId,
+                deviceLabel,
+                deviceIp
         );
     }
 
