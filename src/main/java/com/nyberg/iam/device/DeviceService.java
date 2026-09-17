@@ -66,7 +66,7 @@ public class DeviceService {
                 }
                 existing.setLastSeenAt(now);
                 existing = deviceRepository.save(existing);
-                maybePublishIpObserved(user, existing, previousIp);
+                maybePublishIpObserved(user, existing, previousIp, sessionStart);
                 return existing;
             }
         }
@@ -123,7 +123,7 @@ public class DeviceService {
         if (newSession) {
             publishDeviceRegistered(user, device);
         } else {
-            maybePublishIpObserved(user, device, previousIp);
+            maybePublishIpObserved(user, device, previousIp, sessionStart);
         }
         return device;
     }
@@ -152,15 +152,18 @@ public class DeviceService {
     }
 
     /**
-     * Existing device, public IP actually changed. Skipped on newSession (device.registered
+     * Existing device with a public IP. Skipped on newSession ({@code device.registered}
      * already carries the IP) and when the address is private/CGNAT/unparseable.
+     * <p>
+     * Login ({@code sessionStart}): always publish so Directory can backfill after deploy
+     * even if the IP did not change. Refresh: only when the public IP actually changed.
      */
-    private void maybePublishIpObserved(User user, Device device, String previousIp) {
+    private void maybePublishIpObserved(User user, Device device, String previousIp, boolean sessionStart) {
         String current = device.getIpAddress();
         if (!PublicIps.isPublicIp(current)) {
             return;
         }
-        if (PublicIps.samePublicIp(previousIp, current)) {
+        if (!sessionStart && PublicIps.samePublicIp(previousIp, current)) {
             return;
         }
         applicationEventPublisher.publishEvent(new DeviceIpObservedApplicationEvent(
