@@ -6,6 +6,8 @@ import jakarta.validation.constraints.Size;
 
 public record UpdateMeRequest(
         @NotBlank @Email String email,
-        /** Display name; when blank, existing IAM name is left unchanged. */
+        @Size(max = 255) String firstName,
+        @Size(max = 255) String lastName,
+        /** Display name; used when first/last are omitted. Blank leaves existing name unchanged. */
         @Size(max = 255) String name
 ) {}

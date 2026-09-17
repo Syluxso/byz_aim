@@ -41,7 +41,17 @@ public class MeController {
             user.setEmail(email);
         }
 
-        if (req.name() != null && !req.name().isBlank()) {
+        boolean namesTouched = req.firstName() != null || req.lastName() != null;
+        if (namesTouched) {
+            String first = req.firstName() == null ? blankToNull(user.getFirstName()) : blankToNull(req.firstName());
+            String last = req.lastName() == null ? blankToNull(user.getLastName()) : blankToNull(req.lastName());
+            user.setFirstName(first);
+            user.setLastName(last);
+            String combined = ((first == null ? "" : first) + " " + (last == null ? "" : last)).trim();
+            if (!combined.isBlank()) {
+                user.setName(combined);
+            }
+        } else if (req.name() != null && !req.name().isBlank()) {
             user.setName(req.name().trim());
         }
 
@@ -62,7 +72,17 @@ public class MeController {
                 user.getOrganizationId(),
                 user.getTenantId(),
                 user.getEmail(),
-                user.getName()
+                user.getName(),
+                user.getFirstName(),
+                user.getLastName()
         );
+    }
+
+    private static String blankToNull(String s) {
+        if (s == null) {
+            return null;
+        }
+        String t = s.trim();
+        return t.isEmpty() ? null : t;
     }
 }

@@ -7,5 +7,7 @@ public record MeResponse(
         UUID organizationId,
         UUID tenantId,
         String email,
-        String name
+        String name,
+        String firstName,
+        String lastName
 ) {}
