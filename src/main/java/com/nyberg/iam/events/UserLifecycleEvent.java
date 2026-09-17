@@ -7,7 +7,7 @@ import java.util.UUID;
  * JSON payload for {@code byz.iam.user}.
  * Types: {@link #TYPE_USER_REGISTERED}, {@link #TYPE_PASSWORD_RESET_REQUESTED},
  * {@link #TYPE_USER_AUTHENTICATED}, {@link #TYPE_DEVICE_REGISTERED},
- * {@link #TYPE_DEVICE_REVOKED}.
+ * {@link #TYPE_DEVICE_REVOKED}, {@link #TYPE_DEVICE_IP_OBSERVED}.
  */
 public record UserLifecycleEvent(
         UUID eventId,
@@ -38,6 +38,8 @@ public record UserLifecycleEvent(
     public static final String TYPE_DEVICE_REGISTERED = "device.registered";
     /** Device revoked by the user (sessions for that device invalidated). */
     public static final String TYPE_DEVICE_REVOKED = "device.revoked";
+    /** Existing device seen on a new public IP (login/refresh/touch). Not a new fingerprint. */
+    public static final String TYPE_DEVICE_IP_OBSERVED = "device.ip_observed";
 
     public static final String PROVIDER_PASSWORD = "password";
     public static final String PROVIDER_MICROSOFT = "microsoft";
@@ -145,6 +147,33 @@ public record UserLifecycleEvent(
     ) {
         return deviceEvent(
                 TYPE_DEVICE_REGISTERED,
+                organizationId,
+                tenantId,
+                userId,
+                email,
+                displayName,
+                deviceId,
+                deviceLabel,
+                deviceIp
+        );
+    }
+
+    /**
+     * Known device observed on a different public IP. Directory IP-intel ledger; not a
+     * notification event. Do not fire when the IP is unchanged or not public.
+     */
+    public static UserLifecycleEvent deviceIpObserved(
+            UUID organizationId,
+            UUID tenantId,
+            UUID userId,
+            String email,
+            String displayName,
+            UUID deviceId,
+            String deviceLabel,
+            String deviceIp
+    ) {
+        return deviceEvent(
+                TYPE_DEVICE_IP_OBSERVED,
                 organizationId,
                 tenantId,
                 userId,

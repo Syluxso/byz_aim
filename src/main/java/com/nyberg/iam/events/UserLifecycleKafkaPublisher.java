@@ -48,6 +48,11 @@ public class UserLifecycleKafkaPublisher {
         publish(event.getPayload());
     }
 
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onDeviceIpObserved(DeviceIpObservedApplicationEvent event) {
+        publish(event.getPayload());
+    }
+
     private void publish(UserLifecycleEvent payload) {
         try {
             String json = objectMapper.writeValueAsString(payload);

@@ -3,6 +3,7 @@ package com.nyberg.iam.device;
 import com.nyberg.iam.domain.Client;
 import com.nyberg.iam.domain.Device;
 import com.nyberg.iam.domain.User;
+import com.nyberg.iam.events.DeviceIpObservedApplicationEvent;
 import com.nyberg.iam.events.DeviceRegisteredApplicationEvent;
 import com.nyberg.iam.events.DeviceRevokedApplicationEvent;
 import com.nyberg.iam.events.UserLifecycleEvent;
@@ -59,11 +60,14 @@ public class DeviceService {
                             user.getId(), client.getId())
                     .orElse(null);
             if (existing != null) {
+                String previousIp = existing.getIpAddress();
                 if (h.ipAddress() != null) {
                     existing.setIpAddress(truncate(h.ipAddress(), 64));
                 }
                 existing.setLastSeenAt(now);
-                return deviceRepository.save(existing);
+                existing = deviceRepository.save(existing);
+                maybePublishIpObserved(user, existing, previousIp);
+                return existing;
             }
         }
 
@@ -73,6 +77,7 @@ public class DeviceService {
                         user.getId(), client.getId(), fingerprint)
                 .orElse(null);
 
+        String previousIp = device != null ? device.getIpAddress() : null;
         boolean isNew = device == null;
         // Login/register only: active catalog row with no live refresh tokens = re-login after
         // revoke (or device never got marked revoked). Reset first_seen for this session.
@@ -117,6 +122,8 @@ public class DeviceService {
         device = deviceRepository.save(device);
         if (newSession) {
             publishDeviceRegistered(user, device);
+        } else {
+            maybePublishIpObserved(user, device, previousIp);
         }
         return device;
     }
@@ -142,6 +149,33 @@ public class DeviceService {
                     deviceRepository.save(ghost);
                     refreshTokenRepository.revokeAllByDeviceId(ghost.getId());
                 });
+    }
+
+    /**
+     * Existing device, public IP actually changed. Skipped on newSession (device.registered
+     * already carries the IP) and when the address is private/CGNAT/unparseable.
+     */
+    private void maybePublishIpObserved(User user, Device device, String previousIp) {
+        String current = device.getIpAddress();
+        if (!PublicIps.isPublicIp(current)) {
+            return;
+        }
+        if (PublicIps.samePublicIp(previousIp, current)) {
+            return;
+        }
+        applicationEventPublisher.publishEvent(new DeviceIpObservedApplicationEvent(
+                this,
+                UserLifecycleEvent.deviceIpObserved(
+                        user.getOrganizationId(),
+                        user.getTenantId(),
+                        user.getId(),
+                        user.getEmail(),
+                        user.getName(),
+                        device.getId(),
+                        device.getLabel(),
+                        device.getIpAddress()
+                )
+        ));
     }
 
     private void publishDeviceRegistered(User user, Device device) {
