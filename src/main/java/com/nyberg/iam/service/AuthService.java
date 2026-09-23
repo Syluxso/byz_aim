@@ -56,6 +56,15 @@ public class AuthService {
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Transactional
+    public void changeOwnPassword(User user, String currentPassword, String newPassword) {
+        if (user.getPasswordHash() == null || !passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Current password is incorrect");
+        }
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+    }
+
+    @Transactional
     public TokenResponse register(RegisterRequest req, DeviceHints hints) {
         Client client = resolveClient(req.clientId());
         Tenant tenant = tenantRepository.findByIdAndOrganizationIdAndActiveTrue(req.tenantId(), client.getOrganizationId())

@@ -2,9 +2,11 @@ package com.nyberg.iam.web;
 
 import com.nyberg.iam.admin.AdminAuth;
 import com.nyberg.iam.domain.User;
+import com.nyberg.iam.dto.ChangePasswordRequest;
 import com.nyberg.iam.dto.MeResponse;
 import com.nyberg.iam.dto.UpdateMeRequest;
 import com.nyberg.iam.repository.UserRepository;
+import com.nyberg.iam.service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -20,6 +22,7 @@ import java.util.UUID;
 public class MeController {
 
     private final UserRepository userRepository;
+    private final AuthService authService;
 
     @GetMapping
     public MeResponse getMe() {
@@ -56,6 +59,12 @@ public class MeController {
         }
 
         return toResponse(userRepository.save(user));
+    }
+
+    @PostMapping("/password")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void changePassword(@Valid @RequestBody ChangePasswordRequest req) {
+        authService.changeOwnPassword(requireUser(), req.currentPassword(), req.newPassword());
     }
 
     private User requireUser() {
