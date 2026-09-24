@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.UUID;
@@ -56,6 +57,20 @@ public class IamAdminController {
     public void setOperatorPassword(@PathVariable UUID id, @Valid @RequestBody SetOperatorPasswordRequest req) {
         Jwt jwt = AdminAuth.requireJwt();
         service.setOperatorPassword(AdminAuth.organizationId(jwt), id, req);
+    }
+
+    @PostMapping("/orgs/{orgId}/users/{userId}/password")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void setOrgUserPassword(
+            @PathVariable UUID orgId,
+            @PathVariable UUID userId,
+            @Valid @RequestBody SetOrgUserPasswordRequest req
+    ) {
+        Jwt jwt = AdminAuth.requireJwt();
+        if (!AdminAuth.organizationId(jwt).equals(orgId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Organization mismatch");
+        }
+        service.setOrgUserPassword(orgId, userId, req.password());
     }
 
     @GetMapping("/orgs")

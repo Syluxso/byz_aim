@@ -252,6 +252,18 @@ public class IamAdminService {
         refreshTokenRepo.revokeAllByUserId(userId);
     }
 
+    @Transactional
+    public void setOrgUserPassword(UUID orgId, UUID userId, String password) {
+        User user = userRepo.findByIdAndOrganizationId(userId, orgId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        if (!user.isActive()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
+        }
+        user.setPasswordHash(passwordEncoder.encode(password));
+        userRepo.save(user);
+        refreshTokenRepo.revokeAllByUserId(userId);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private Client requirePlatformClient(UUID callerOrgId) {
