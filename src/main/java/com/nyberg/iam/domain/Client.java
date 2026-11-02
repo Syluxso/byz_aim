@@ -41,6 +41,10 @@ public class Client {
     @Column(name = "redirect_uris")
     private String redirectUris;
 
+    /** Public base URL of the owning app; password reset links use it. Null = platform default. */
+    @Column(name = "app_base_url")
+    private String appBaseUrl;
+
     @Column(nullable = false)
     private String name;
 

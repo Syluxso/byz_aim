@@ -113,9 +113,13 @@ public class PasswordResetService {
                 .build();
         passwordResetTokenRepository.save(token);
 
-        String base = appPublicBaseUrl.endsWith("/")
-                ? appPublicBaseUrl.substring(0, appPublicBaseUrl.length() - 1)
+        // The client's own app when it has one, else the platform default.
+        String configured = client.getAppBaseUrl() != null && !client.getAppBaseUrl().isBlank()
+                ? client.getAppBaseUrl().trim()
                 : appPublicBaseUrl;
+        String base = configured.endsWith("/")
+                ? configured.substring(0, configured.length() - 1)
+                : configured;
         String resetUrl = base + "/reset-password?token=" + raw;
 
         log.info("Password reset issued for userId={} orgId={} (email via Kafka; link={})",
