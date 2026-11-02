@@ -122,6 +122,12 @@ public class IamAdminController {
         return service.createClient(orgId, req);
     }
 
+    @PatchMapping("/orgs/{orgId}/clients/{id}")
+    public ClientResponse updateClient(@PathVariable UUID orgId, @PathVariable UUID id,
+                                       @RequestBody UpdateClientRequest req) {
+        return service.updateClient(orgId, id, req);
+    }
+
     @PostMapping("/orgs/{orgId}/clients/{id}/rotate-secret")
     public ClientCreatedResponse rotateSecret(@PathVariable UUID orgId, @PathVariable UUID id) {
         return service.rotateSecret(orgId, id);

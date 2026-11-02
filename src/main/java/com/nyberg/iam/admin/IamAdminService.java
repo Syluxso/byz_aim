@@ -130,9 +130,39 @@ public class IamAdminService {
                 ? "password,refresh_token,client_credentials"
                 : "password,refresh_token");
         client.setClientSecretHash(secret != null ? passwordEncoder.encode(secret) : null);
+        client.setAppBaseUrl(normalizeAppBaseUrl(req.appBaseUrl()));
         client.setActive(true);
 
         return ClientCreatedResponse.from(clientRepo.save(client), secret);
+    }
+
+    @Transactional
+    public ClientResponse updateClient(UUID orgId, UUID id, UpdateClientRequest req) {
+        Client client = clientRepo.findById(id)
+                .filter(c -> orgId.equals(c.getOrganizationId()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Client not found"));
+        client.setAppBaseUrl(normalizeAppBaseUrl(req.appBaseUrl()));
+        return ClientResponse.from(clientRepo.save(client));
+    }
+
+    /** Null for blank; otherwise an absolute http(s) URL without a trailing slash. */
+    static String normalizeAppBaseUrl(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        String url = raw.trim();
+        while (url.endsWith("/")) url = url.substring(0, url.length() - 1);
+        try {
+            java.net.URI uri = new java.net.URI(url);
+            String scheme = uri.getScheme();
+            if (uri.getHost() == null || scheme == null
+                    || !(scheme.equalsIgnoreCase("https") || scheme.equalsIgnoreCase("http"))
+                    || uri.getQuery() != null || uri.getFragment() != null) {
+                throw new IllegalArgumentException();
+            }
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "appBaseUrl must be an absolute http(s) URL such as https://app.example.org");
+        }
+        return url;
     }
 
     @Transactional

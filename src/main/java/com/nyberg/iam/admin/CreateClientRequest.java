@@ -8,5 +8,6 @@ public record CreateClientRequest(
         @NotBlank String clientId,
         @NotBlank String name,
         String type,      // "public" or "confidential" — defaults to confidential
-        UUID tenantId     // optional
+        UUID tenantId,    // optional
+        String appBaseUrl // optional; password reset links point here (see UpdateClientRequest)
 ) {}
