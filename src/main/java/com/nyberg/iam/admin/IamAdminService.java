@@ -1,6 +1,8 @@
 package com.nyberg.iam.admin;
 
 import com.nyberg.iam.domain.*;
+import com.nyberg.iam.dto.MeResponse;
+import com.nyberg.iam.dto.UpdateMeRequest;
 import com.nyberg.iam.events.UserLifecycleEvent;
 import com.nyberg.iam.events.UserRegisteredApplicationEvent;
 import com.nyberg.iam.repository.*;
@@ -280,6 +282,53 @@ public class IamAdminService {
         userRepo.save(user);
         // Force re-login with the new password on other sessions.
         refreshTokenRepo.revokeAllByUserId(userId);
+    }
+
+    @Transactional
+    public MeResponse updateOrgUser(UUID orgId, UUID userId, UpdateMeRequest req) {
+        User user = userRepo.findByIdAndOrganizationId(userId, orgId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        if (!user.isActive()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
+        }
+        String email = req.email().trim().toLowerCase();
+        if (!email.equalsIgnoreCase(user.getEmail())) {
+            userRepo.findByOrganizationIdAndEmailIgnoreCase(orgId, email)
+                    .filter(other -> !other.getId().equals(user.getId()))
+                    .ifPresent(other -> {
+                        throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already in use");
+                    });
+            user.setEmail(email);
+        }
+        boolean namesTouched = req.firstName() != null || req.lastName() != null;
+        if (namesTouched) {
+            String first = req.firstName() == null ? blankToNull(user.getFirstName()) : blankToNull(req.firstName());
+            String last = req.lastName() == null ? blankToNull(user.getLastName()) : blankToNull(req.lastName());
+            user.setFirstName(first);
+            user.setLastName(last);
+            String combined = ((first == null ? "" : first) + " " + (last == null ? "" : last)).trim();
+            if (!combined.isBlank()) {
+                user.setName(combined);
+            }
+        }
+        User saved = userRepo.save(user);
+        return new MeResponse(
+                saved.getId(),
+                saved.getOrganizationId(),
+                saved.getTenantId(),
+                saved.getEmail(),
+                saved.getName(),
+                saved.getFirstName(),
+                saved.getLastName()
+        );
+    }
+
+    private static String blankToNull(String s) {
+        if (s == null) {
+            return null;
+        }
+        String t = s.trim();
+        return t.isEmpty() ? null : t;
     }
 
     @Transactional

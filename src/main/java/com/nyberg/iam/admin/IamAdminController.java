@@ -1,5 +1,7 @@
 package com.nyberg.iam.admin;
 
+import com.nyberg.iam.dto.MeResponse;
+import com.nyberg.iam.dto.UpdateMeRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -57,6 +59,19 @@ public class IamAdminController {
     public void setOperatorPassword(@PathVariable UUID id, @Valid @RequestBody SetOperatorPasswordRequest req) {
         Jwt jwt = AdminAuth.requireJwt();
         service.setOperatorPassword(AdminAuth.organizationId(jwt), id, req);
+    }
+
+    @PatchMapping("/orgs/{orgId}/users/{userId}")
+    public MeResponse updateOrgUser(
+            @PathVariable UUID orgId,
+            @PathVariable UUID userId,
+            @Valid @RequestBody UpdateMeRequest req
+    ) {
+        Jwt jwt = AdminAuth.requireJwt();
+        if (!AdminAuth.organizationId(jwt).equals(orgId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Organization mismatch");
+        }
+        return service.updateOrgUser(orgId, userId, req);
     }
 
     @PostMapping("/orgs/{orgId}/users/{userId}/password")
