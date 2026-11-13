@@ -82,8 +82,11 @@ public class PasswordResetService {
                 .filter(User::isActive)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid or expired reset link"));
 
-        user.setPasswordHash(passwordEncoder.encode(req.newPassword()));
-        userRepository.saveAndFlush(user);
+        int updated = userRepository.updatePasswordHash(
+                user.getId(), user.getOrganizationId(), passwordEncoder.encode(req.newPassword()));
+        if (updated != 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid or expired reset link");
+        }
 
         stored.setUsedAt(Instant.now());
         passwordResetTokenRepository.save(stored);

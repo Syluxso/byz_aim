@@ -278,8 +278,10 @@ public class IamAdminService {
         UUID platformOrgId = requirePlatformOrg(callerOrgId);
         User user = userRepo.findByIdAndOrganizationId(userId, platformOrgId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
-        user.setPasswordHash(passwordEncoder.encode(req.password()));
-        userRepo.saveAndFlush(user);
+        int updated = userRepo.updatePasswordHash(userId, platformOrgId, passwordEncoder.encode(req.password()));
+        if (updated != 1) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
+        }
         // Force re-login with the new password on other sessions.
         refreshTokenRepo.revokeAllByUserId(userId);
     }
@@ -338,8 +340,10 @@ public class IamAdminService {
         if (!user.isActive()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
         }
-        user.setPasswordHash(passwordEncoder.encode(password));
-        userRepo.saveAndFlush(user);
+        int updated = userRepo.updatePasswordHash(userId, orgId, passwordEncoder.encode(password));
+        if (updated != 1) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
+        }
         refreshTokenRepo.revokeAllByUserId(userId);
     }
 

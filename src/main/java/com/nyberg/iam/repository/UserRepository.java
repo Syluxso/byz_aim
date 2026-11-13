@@ -2,6 +2,9 @@ package com.nyberg.iam.repository;
 
 import com.nyberg.iam.domain.User;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
@@ -13,4 +16,12 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     Optional<User> findByIdAndOrganizationId(UUID id, UUID organizationId);
     List<User> findByOrganizationIdOrderByCreatedAtDesc(UUID organizationId);
     boolean existsByOrganizationIdAndEmailIgnoreCase(UUID organizationId, String email);
+
+    /**
+     * Writes the hash with a bulk update. A persistence-context clear from the
+     * session revoke in the same transaction cannot discard it.
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("update User u set u.passwordHash = :passwordHash where u.id = :id and u.organizationId = :orgId")
+    int updatePasswordHash(@Param("id") UUID id, @Param("orgId") UUID orgId, @Param("passwordHash") String passwordHash);
 }

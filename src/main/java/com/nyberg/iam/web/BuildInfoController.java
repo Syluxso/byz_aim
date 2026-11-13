@@ -15,6 +15,7 @@ public class BuildInfoController {
                 "service", "byz-iam",
                 "decoder", "jjwt-filter",
                 "oauth2ResourceServer", false,
+                "revision", "password-sql",
                 "time", Instant.now().toString()
         );
     }
