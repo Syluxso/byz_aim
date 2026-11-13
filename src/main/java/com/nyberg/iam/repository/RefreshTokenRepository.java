@@ -14,11 +14,13 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
 
     boolean existsByDeviceIdAndRevokedFalse(UUID deviceId);
 
-    @Modifying(clearAutomatically = true)
+    // Flush before clear. clearAutomatically drops unflushed entity changes, which
+    // discarded a password update made earlier in the same transaction.
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("update RefreshToken r set r.revoked = true where r.userId = :userId and r.revoked = false")
     int revokeAllByUserId(@Param("userId") UUID userId);
 
-    @Modifying(clearAutomatically = true)
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("update RefreshToken r set r.revoked = true where r.deviceId = :deviceId and r.revoked = false")
     int revokeAllByDeviceId(@Param("deviceId") UUID deviceId);
 }

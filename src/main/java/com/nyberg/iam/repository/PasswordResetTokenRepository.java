@@ -14,7 +14,8 @@ public interface PasswordResetTokenRepository extends JpaRepository<PasswordRese
 
     Optional<PasswordResetToken> findByTokenHashAndUsedAtIsNull(String tokenHash);
 
-    @Modifying(clearAutomatically = true)
+    // Flush before clear so a new password saved in this transaction is not discarded.
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("UPDATE PasswordResetToken t SET t.usedAt = :now WHERE t.userId = :userId AND t.usedAt IS NULL")
     int invalidateUnusedForUser(@Param("userId") UUID userId, @Param("now") Instant now);
 }

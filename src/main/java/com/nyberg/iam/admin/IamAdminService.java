@@ -279,7 +279,7 @@ public class IamAdminService {
         User user = userRepo.findByIdAndOrganizationId(userId, platformOrgId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
         user.setPasswordHash(passwordEncoder.encode(req.password()));
-        userRepo.save(user);
+        userRepo.saveAndFlush(user);
         // Force re-login with the new password on other sessions.
         refreshTokenRepo.revokeAllByUserId(userId);
     }
@@ -339,7 +339,7 @@ public class IamAdminService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
         }
         user.setPasswordHash(passwordEncoder.encode(password));
-        userRepo.save(user);
+        userRepo.saveAndFlush(user);
         refreshTokenRepo.revokeAllByUserId(userId);
     }
 
